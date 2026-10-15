@@ -33,6 +33,7 @@ Production-style run: `npm run build && npm start` (Express serves `dist/` on :3
 - **Activity stream**: work notes vs. additional comments, plus automatic *field change* audit entries.
 - **Business rules (server)**: auto-numbering (INC/PRB/CHG/RITM/KB), priority matrix, mandatory Resolution code/notes to resolve, auto In Progress on assignment, change approval flow (Request Approval -> Approve/Reject -> Scheduled -> Implement -> Review -> Closed), catalog orders >= $1,000 need approval.
 - **Dashboard**: KPI tiles and charts that drill down into filtered lists.
+- **Incident Board** (`/board/incident`): Kanban view of incidents by state. Drag cards (or focus a card and press Shift+Arrow) to change state; dropping on *Resolved* asks for resolution code and notes. Cards show a live resolution-SLA countdown. Filter by group, priority, "assigned to me" or SLA breached / at risk, with optional swimlanes by priority or assignment group. Dropping a card into another group's swimlane reassigns it. *Assign to me* is on every unassigned card. The board refreshes every 15 s.
 - **Service Portal**: catalog with variables and ordering, Get Help (record producer to Incident), My Tickets with conversation, Knowledge Base with search and "helpful" votes.
 
 ## Architecture
@@ -74,3 +75,5 @@ npm test             # API tests (node:test, in-memory DB)
 | Incident list | Incident form | Service Portal |
 | --- | --- | --- |
 | ![](docs/screenshots/incident-list.png) | ![](docs/screenshots/incident-form.png) | ![](docs/screenshots/service-portal.png) |
+
+![Incident Board](docs/screenshots/incident-board.png)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { SLA_HOURS, SUBCATEGORY, TABLES, calcPriority, getField } from '../../shared/schema.ts'
+import { SUBCATEGORY, TABLES, calcPriority, getField } from '../../shared/schema.ts'
 import type { FieldDef, FormSection } from '../../shared/schema.ts'
 import { ApiError, api } from '../api.ts'
 import type { JournalEntry, Rec } from '../api.ts'
@@ -11,7 +11,7 @@ import { MiniList } from '../components/ListTable.tsx'
 import { ReferenceInput } from '../components/ReferenceInput.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { parseQuery } from '../query.ts'
-import { displayValue, formatDate, fromInputDate, parseDate, pushHistory, recordUrl, toInputDate } from '../util.ts'
+import { displayValue, formatDate, formatHours, fromInputDate, pushHistory, recordUrl, slaInfo, toInputDate } from '../util.ts'
 
 type Draft = Record<string, string | null>
 interface Msg {
@@ -20,26 +20,19 @@ interface Msg {
 }
 
 function SlaBar({ rec }: { rec: Rec }) {
-  const opened = parseDate(String(rec.opened_at ?? ''))
-  if (!opened) return null
-  const hours = SLA_HOURS[String(rec.priority ?? '5')] ?? 120
-  const end = parseDate(String(rec.resolved_at ?? '')) ?? new Date()
-  const elapsed = (end.getTime() - opened.getTime()) / 3600000
-  const pct = Math.min(100, Math.round((elapsed / hours) * 100))
-  const stopped = Boolean(rec.resolved_at)
-  const breached = elapsed > hours
-  const left = hours - elapsed
-  const fmt = (h: number) => (Math.abs(h) >= 24 ? `${Math.floor(Math.abs(h) / 24)}d ${Math.floor(Math.abs(h) % 24)}h` : `${Math.floor(Math.abs(h))}h ${Math.floor((Math.abs(h) * 60) % 60)}m`)
+  const sla = slaInfo(rec)
+  if (!sla) return null
+  const { hours, left, pct, stopped, breached, tone } = sla
   return (
     <div className="sn-sla" data-testid="sla-bar">
       <div className="sn-sla-label">
         <b>Resolution SLA</b> <span className="muted">P{String(rec.priority)} · {hours}h target</span>
         <span className={`sn-sla-status ${breached ? 'bad' : stopped ? 'ok' : ''}`}>
-          {stopped ? (breached ? 'Completed (breached)' : 'Completed') : breached ? `Breached ${fmt(left)} ago` : `${fmt(left)} remaining`}
+          {stopped ? (breached ? 'Completed (breached)' : 'Completed') : breached ? `Breached ${formatHours(left)} ago` : `${formatHours(left)} remaining`}
         </span>
       </div>
       <div className="sn-sla-track">
-        <div className={`sn-sla-fill ${breached ? 'bad' : pct > 75 ? 'warn' : 'ok'}`} style={{ width: `${pct}%` }} />
+        <div className={`sn-sla-fill ${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   )

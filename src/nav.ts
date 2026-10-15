@@ -27,13 +27,17 @@ export const NAV: NavApp[] = [
   {
     label: 'Dashboards',
     agentOnly: true,
-    modules: [{ label: 'ITSM Overview', to: '/' }],
+    modules: [
+      { label: 'ITSM Overview', to: '/' },
+      { label: 'Incident Board', to: '/board/incident' },
+    ],
   },
   {
     label: 'Incident',
     agentOnly: true,
     modules: [
       { label: 'Create New', to: recordUrl('incident', '-1') },
+      { label: 'Incident Board', to: '/board/incident' },
       { label: 'Assigned to me', to: listUrl('incident', `assigned_to=${ME}^${ACTIVE_INC}`) },
       { label: 'Open', to: listUrl('incident', ACTIVE_INC) },
       { label: 'Open - Unassigned', to: listUrl('incident', `assigned_toISEMPTY^${ACTIVE_INC}`) },
