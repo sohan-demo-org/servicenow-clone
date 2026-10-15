@@ -1,3 +1,5 @@
+import type { VaReply, VaRequest } from '../shared/va.ts'
+
 export type Rec = Record<string, string | number | null> & { sys_id: string; _dv?: Record<string, string> }
 
 export interface ListResult {
@@ -71,6 +73,7 @@ export const api = {
     req<{ result: Rec }>('POST', `/api/now/approval/${table}/${id}`, { decision, comment }).then((r) => r.result),
   kbView: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/view`).then((r) => r.result),
   kbHelpful: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/helpful`).then((r) => r.result),
+  va: (body: VaRequest) => req<{ result: VaReply }>('POST', '/api/now/va/message', body).then((r) => r.result),
   search: (q: string) =>
     req<{ result: { table: string; label: string; total: number; records: Rec[] }[] }>('GET', `/api/now/search?q=${encodeURIComponent(q)}`).then((r) => r.result),
 }
