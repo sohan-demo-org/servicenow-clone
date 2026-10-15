@@ -34,6 +34,7 @@ Production-style run: `npm run build && npm start` (Express serves `dist/` on :3
 - **Business rules (server)**: auto-numbering (INC/PRB/CHG/RITM/KB), priority matrix, mandatory Resolution code/notes to resolve, auto In Progress on assignment, change approval flow (Request Approval -> Approve/Reject -> Scheduled -> Implement -> Review -> Closed), catalog orders >= $1,000 need approval.
 - **Dashboard**: KPI tiles and charts that drill down into filtered lists.
 - **Service Portal**: catalog with variables and ordering, Get Help (record producer to Incident), My Tickets with conversation, Knowledge Base with search and "helpful" votes.
+- **Virtual Agent**: chat widget on every portal page. It answers questions with ranked Knowledge articles, opens an incident from the conversation (category, subcategory, assignment group and urgency inferred from the text, channel = Chat), reports the status of your open incidents/requests or a specific `INC…`/`RITM…` number, and suggests catalog items ("I need a new laptop"). Try: *my vpn keeps disconnecting* -> *Still need help*.
 
 ## Architecture
 
@@ -43,6 +44,7 @@ server/            Express 5 + node:sqlite (Node >= 22.18, run as TypeScript via
   db.ts            schema creation, encoded-query -> SQL, CRUD, business rules, journal/audit
   app.ts           REST routes
   seed.ts          deterministic demo data
+  va.ts            Virtual Agent intents, keyword ranking and incident classification
 src/               React 19 + Vite + React Router
 ```
 
@@ -58,6 +60,7 @@ src/               React 19 + Vite + React Router
 | POST | `/api/now/catalog/:item/order` | creates a Requested Item |
 | POST | `/api/now/approval/:table/:sys_id` | `{ "decision": "approved" \| "rejected" }` |
 | GET | `/api/now/search?q=` | global search |
+| POST | `/api/now/va/message` | Virtual Agent turn: `{ "text": "..." }` or `{ "action": { "type": "menu" \| "solved" \| "create_incident", ... } }` -> `{ messages, chips }` |
 
 Send `X-User: <sys_id>` to act as a user (the UI does this after login). Supported query operators: `=`, `!=`, `LIKE`, `NOTLIKE`, `STARTSWITH`, `IN`, `NOTIN`, `ISEMPTY`, `ISNOTEMPTY`, `<`, `>`, `<=`, `>=`, `^OR`, `ORDERBY`/`ORDERBYDESC`, plus `javascript:gs.getUserID()` and `javascript:gs.daysAgo(n)`.
 

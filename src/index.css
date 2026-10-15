@@ -183,3 +183,35 @@ textarea.sn-input{resize:vertical}
 .sp-article p{line-height:1.6}.sp-helpful{display:flex;align-items:center;gap:10px;border-top:1px solid #eee;padding-top:14px;margin-top:20px}
 .sp-footer{text-align:center;color:var(--muted);padding:18px;font-size:12px}
 .sn-titlebar-right select.sn-input{width:auto}
+
+/* Virtual Agent */
+.va-launcher{position:fixed;right:24px;bottom:24px;z-index:50;display:flex;align-items:center;gap:10px;background:#3d7e6a;color:#fff;border:0;border-radius:30px;padding:12px 20px 12px 14px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
+.va-launcher:hover{background:#346d5c;transform:translateY(-1px)}
+.va-panel{position:fixed;right:24px;bottom:24px;z-index:50;width:380px;height:min(600px,calc(100vh - 48px));background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden;animation:va-pop .18s ease-out}
+@keyframes va-pop{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+.va-head{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(120deg,#293e40,#3d7e6a);color:#fff}
+.va-head div{flex:1;display:flex;flex-direction:column}.va-head small{opacity:.85;font-size:12px;display:flex;align-items:center;gap:5px}
+.va-avatar{width:34px;height:34px;border-radius:50%;background:var(--now,#81b5a1);color:#1d2b2c;display:flex;align-items:center;justify-content:center}
+.va-online{width:8px;height:8px;border-radius:50%;background:#62d26f;display:inline-block}
+.va-icon-btn{background:none;border:0;color:#fff;padding:4px;border-radius:4px;cursor:pointer}.va-icon-btn:hover{background:rgba(255,255,255,.15)}
+.va-log{flex:1;overflow-y:auto;padding:14px;background:#f6f7f8;display:flex;flex-direction:column;gap:8px}
+.va-line{display:flex;flex-direction:column;gap:6px;align-items:flex-start;animation:va-in .2s ease-out}.va-line.user{align-items:flex-end}
+@keyframes va-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.va-bubble{background:#fff;border:1px solid #e3e6ea;border-radius:14px 14px 14px 4px;padding:9px 12px;max-width:85%;white-space:pre-wrap;line-height:1.4}
+.va-line.user .va-bubble{background:#3d7e6a;color:#fff;border-color:#3d7e6a;border-radius:14px 14px 4px 14px}
+.va-typing{display:flex;gap:4px;padding:12px 14px}.va-typing i{width:7px;height:7px;border-radius:50%;background:#9aa5ab;animation:va-dot 1s infinite}
+.va-typing i:nth-child(2){animation-delay:.15s}.va-typing i:nth-child(3){animation-delay:.3s}
+@keyframes va-dot{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+.va-card{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e3e6ea;border-left:4px solid #3d7e6a;border-radius:8px;padding:9px 10px;width:92%;color:inherit;text-decoration:none}
+.va-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.1);border-color:#3d7e6a}
+.va-card.created{border-left-color:#2e8540;background:#f2faf3}.va-card.item{border-left-color:#4a7bd0}.va-card.ticket{border-left-color:#e2a400}
+.va-card-icon{width:32px;height:32px;flex-shrink:0;border-radius:8px;background:#e8f2ef;color:#3d7e6a;display:flex;align-items:center;justify-content:center}
+.va-card.created .va-card-icon{background:#2e8540;color:#fff}
+.va-card-body{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}.va-card-body b{font-size:13px}.va-card-body small{color:var(--muted,#666);font-size:12px;line-height:1.35}
+.va-badge{font-size:11px;font-weight:700;background:#eef0f2;color:#555;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.va-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.va-chip{background:#fff;border:1px solid #3d7e6a;color:#2b5e4f;border-radius:16px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer}.va-chip:hover{background:#3d7e6a;color:#fff}
+.va-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e3e6ea;background:#fff}
+.va-input input{flex:1;border:1px solid #d5d9dd;border-radius:20px;padding:9px 14px;font:inherit;outline:0}.va-input input:focus{border-color:#3d7e6a}
+.va-send{width:38px;height:38px;border-radius:50%;border:0;background:#3d7e6a;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}.va-send:disabled{opacity:.45;cursor:default}
+.sp-hero-va{margin-top:14px;background:none;border:0;color:#fff;opacity:.9;font:inherit;text-decoration:underline;cursor:pointer}.sp-hero-va:hover{opacity:1}
