@@ -16,7 +16,8 @@ async function call(method: string, path: string, body?: unknown) {
     headers: { 'Content-Type': 'application/json', 'X-User': adminId },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const json = res.status === 204 ? null : await res.json()
+  // oxlint-disable-next-line typescript/no-explicit-any
+  const json: any = res.status === 204 ? null : await res.json()
   return { status: res.status, json }
 }
 

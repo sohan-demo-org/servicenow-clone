@@ -80,7 +80,7 @@ export function PortalHome() {
     document.title = 'Service Portal | ServiceNow Clone'
     api.list('sc_cat_item', { query: 'active=true^ORDERBYname', limit: 6 }).then((r) => setItems(r.result))
     api.list('kb_knowledge', { query: 'workflow_state=published^ORDERBYDESCsys_view_count', limit: 5 }).then((r) => setArticles(r.result))
-    api.list('incident', { query: 'caller_id=javascript:gs.getUserID()^stateNOTIN7,8^ORDERBYDESCsys_updated_on', limit: 4 }).then((r) => setMine(r.result))
+    api.list('incident', { query: 'caller_id=javascript:gs.getUserID()^stateNOTIN6,7,8^ORDERBYDESCsys_updated_on', limit: 4 }).then((r) => setMine(r.result))
   }, [])
   return (
     <>
