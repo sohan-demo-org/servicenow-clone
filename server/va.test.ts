@@ -58,6 +58,11 @@ describe('Virtual Agent', () => {
     assert.equal(escalate.action.short_description, 'my vpn keeps disconnecting')
   })
 
+  it('prefers the literal keyword over a synonym match', async () => {
+    const r = await say('abel.tuter', { text: 'urgent: outlook is down and I cannot work' })
+    assert.match(r.json.result.messages[0].cards[0].title, /^Outlook/)
+  })
+
   it('offers to open an incident when nothing matches', async () => {
     const r = await say('abel.tuter', { text: 'zzqx flurb' })
     assert.match(r.json.result.messages[0].text, /couldn't find/)
@@ -98,6 +103,7 @@ describe('Virtual Agent', () => {
     const r = await say('abel.tuter', { text: 'I need a new laptop' })
     const titles = r.json.result.messages[0].cards.map((c: { title: string }) => c.title)
     assert.ok(titles.includes('Standard Laptop'))
+    assert.ok(!titles.includes('New Hire Onboarding'))
     assert.equal(r.json.result.messages[0].cards[0].kind, 'item')
   })
 

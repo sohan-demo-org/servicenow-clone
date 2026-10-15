@@ -11,7 +11,7 @@ export interface VaActor {
 }
 
 const STOPWORDS = new Set(
-  'the a an and or but to of for in on at by with from my me i im i\'m is are was were be been it its this that there have has had do does did not no can cant can\'t cannot wont won\'t keeps keep get got getting please help need want would like how what why when where who which you your our we us again still just some any all'.split(' '),
+  'the a an and or but to of for in on at by with from my me i im i\'m is are was were be been it its this that there have has had do does did not no can cant can\'t cannot wont won\'t keeps keep get got getting please help need want would like how what why when where who which you your our we us again still just some any all new'.split(' '),
 )
 
 const SYNONYMS: Record<string, string[]> = {
@@ -120,26 +120,30 @@ export function tokenize(text: string): string[] {
     .filter((w) => w.length >= 2 && !STOPWORDS.has(w))
 }
 
-function expand(tokens: string[]): string[] {
-  return [...new Set(tokens.flatMap((t) => [t, ...(SYNONYMS[t] ?? [])]))]
-}
-
 function termMatches(term: string, words: string[]): boolean {
   return words.some((w) => w === term || (Math.min(w.length, term.length) >= 3 && (w.startsWith(term) || term.startsWith(w))))
 }
 
-/** Rank records by keyword overlap: a hit in the title counts 3x a hit in the body. */
+/**
+ * Rank records by keyword overlap. Each query word scores its best match: 3 in the title, 1 in the body,
+ * and a synonym match scores less (2 / 0.5) so the literal word wins ties.
+ */
 export function rank(query: string, docs: { title: string; body: string }[]): { index: number; score: number }[] {
-  const terms = expand(tokenize(query))
-  if (!terms.length) return []
+  const words = [...new Set(tokenize(query))]
+  if (!words.length) return []
   return docs
     .map((d, index) => {
       const title = tokenize(d.title)
       const body = tokenize(d.body)
       let score = 0
-      for (const t of terms) {
-        if (termMatches(t, title)) score += 3
-        else if (termMatches(t, body)) score += 1
+      for (const w of words) {
+        let best = 0
+        for (const term of [w, ...(SYNONYMS[w] ?? [])]) {
+          const exact = term === w
+          if (termMatches(term, title)) best = Math.max(best, exact ? 3 : 2)
+          else if (termMatches(term, body)) best = Math.max(best, exact ? 1 : 0.5)
+        }
+        score += best
       }
       return { index, score }
     })

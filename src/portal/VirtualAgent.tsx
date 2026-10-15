@@ -43,7 +43,7 @@ export function VirtualAgent() {
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
-  }, [lines, typing])
+  }, [lines, typing, open])
 
   async function send(userText: string | null, body: { text?: string; action?: VaAction }) {
     if (typing) return
