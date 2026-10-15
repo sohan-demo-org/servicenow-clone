@@ -1,4 +1,4 @@
-import { TABLES, choiceLabel, getField } from '../shared/schema.ts'
+import { SLA_HOURS, TABLES, choiceLabel, getField } from '../shared/schema.ts'
 import type { Rec } from './api.ts'
 
 export function displayValue(table: string, rec: Rec, field: string): string {
@@ -95,4 +95,31 @@ export function getHistory(): HistoryItem[] {
   } catch {
     return []
   }
+}
+
+export interface SlaInfo {
+  hours: number
+  elapsed: number
+  left: number
+  pct: number
+  stopped: boolean
+  breached: boolean
+  tone: 'ok' | 'warn' | 'bad'
+}
+
+/** Resolution SLA for an incident, measured from opened_at to resolved_at (or now). */
+export function slaInfo(rec: Rec, now: number = Date.now()): SlaInfo | null {
+  const opened = parseDate(String(rec.opened_at ?? ''))
+  if (!opened) return null
+  const hours = SLA_HOURS[String(rec.priority ?? '5')] ?? 120
+  const end = parseDate(String(rec.resolved_at ?? ''))?.getTime() ?? now
+  const elapsed = (end - opened.getTime()) / 3600000
+  const pct = Math.min(100, Math.round((elapsed / hours) * 100))
+  const breached = elapsed > hours
+  return { hours, elapsed, left: hours - elapsed, pct, stopped: Boolean(rec.resolved_at), breached, tone: breached ? 'bad' : pct > 75 ? 'warn' : 'ok' }
+}
+
+export function formatHours(h: number): string {
+  const a = Math.abs(h)
+  return a >= 24 ? `${Math.floor(a / 24)}d ${Math.floor(a % 24)}h` : `${Math.floor(a)}h ${Math.floor((a * 60) % 60)}m`
 }

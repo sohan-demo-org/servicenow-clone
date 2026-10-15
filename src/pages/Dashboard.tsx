@@ -183,6 +183,9 @@ export function Dashboard() {
           <Link className="sn-btn primary" to={recordUrl('incident', '-1')}>
             Create Incident
           </Link>
+          <Link className="sn-btn" to="/board/incident">
+            Incident Board
+          </Link>
           <Link className="sn-btn" to="/sp">
             Service Portal
           </Link>
