@@ -141,5 +141,6 @@ describe('Virtual Agent', () => {
     assert.equal(rank('printer jammed', [{ title: 'Password policy', body: '' }, { title: 'Clearing a printer jam', body: '' }])[0].index, 1)
     const bodyOnly = rank('globalprotect', [{ title: 'Remote access', body: 'Install the GlobalProtect client' }, { title: 'Printers', body: 'Toner' }])
     assert.deepEqual(bodyOnly.map((r) => r.index), [0])
+    assert.deepEqual(rank('notebook display', [{ title: 'Hardware tips', body: 'Laptop and monitor care' }]), [])
   })
 })

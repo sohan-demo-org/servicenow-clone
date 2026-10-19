@@ -139,6 +139,7 @@ export function rank(query: string, docs: { title: string; body: string }[]): { 
       const title = tokenize(d.title)
       const body = tokenize(d.body)
       let score = 0
+      let literal = false
       for (const w of words) {
         let best = 0
         for (const term of [w, ...(SYNONYMS[w] ?? [])]) {
@@ -147,12 +148,14 @@ export function rank(query: string, docs: { title: string; body: string }[]): { 
           else if (termMatches(term, body)) best = Math.max(best, exact ? 1 : 0.5)
         }
         score += best
+        if (best === 1 || best === 3) literal = true
       }
-      return { index, score }
+      return { index, score, literal }
     })
     .sort((a, b) => b.score - a.score)
   const strong = scored.filter((r) => r.score >= 2)
-  return strong.length ? strong : scored.filter((r) => r.score >= 1).slice(0, 1)
+  const fallback = strong.length ? strong : scored.filter((r) => r.score >= 1 && r.literal).slice(0, 1)
+  return fallback.map(({ index, score }) => ({ index, score }))
 }
 
 /**
