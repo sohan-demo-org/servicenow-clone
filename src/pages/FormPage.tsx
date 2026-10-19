@@ -401,6 +401,13 @@ export function FormPage() {
         </Link>,
       )
     }
+    const mapCi = table === 'cmdb_ci' ? id : rec?.cmdb_ci && ['incident', 'problem', 'change_request'].includes(table) ? String(rec.cmdb_ci) : ''
+    if (mapCi && agent)
+      buttons.push(
+        <Link key="map" className="sn-btn" to={table === 'change_request' ? `/map/${mapCi}?simulate=${mapCi}` : `/map/${mapCi}`} data-testid="form-service-map">
+          <Icon name="map" size={14} /> {table === 'change_request' ? 'Impacted Services' : 'Service Map'}
+        </Link>,
+      )
     if (agent)
       buttons.push(
         <button key="del" className="sn-btn danger" onClick={del}>

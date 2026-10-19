@@ -6,6 +6,7 @@ import { FormPage } from './pages/FormPage.tsx'
 import { ListPage } from './pages/ListPage.tsx'
 import { Login } from './pages/Login.tsx'
 import { SearchPage } from './pages/SearchPage.tsx'
+import { ServiceMapPage, ServiceOverview } from './pages/ServiceMap.tsx'
 import {
   PortalArticle,
   PortalCatalog,
@@ -52,6 +53,8 @@ export default function App() {
           <Route path="/list/:table" element={<ListPage />} />
           <Route path="/record/:table/:id" element={<FormPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/map" element={<ServiceOverview />} />
+          <Route path="/map/:id" element={<ServiceMapPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

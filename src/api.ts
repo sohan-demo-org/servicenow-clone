@@ -19,6 +19,54 @@ export interface StatRow {
   count: number
 }
 
+export type Health = 'ok' | 'minor' | 'degraded' | 'critical'
+
+export interface MapNode {
+  sys_id: string
+  name: string
+  sys_class_name: string
+  class_label: string
+  operational_status: string
+  environment: string
+  ip_address: string
+  support_group: string
+  support_group_dv: string
+  level: number
+  health: Health
+  rollup: Health
+  incidents: number
+  top_priority: number | null
+  changes: number
+  implementing: boolean
+}
+
+export interface MapEdge {
+  sys_id: string
+  parent: string
+  child: string
+  type: string
+  label: string
+}
+
+export interface ServiceMapData {
+  root: string
+  depth: number
+  nodes: MapNode[]
+  edges: MapEdge[]
+}
+
+export type ImpactedNode = MapNode & { hops: number; path: string[] }
+
+export interface ImpactData {
+  ci: MapNode
+  impacted: ImpactedNode[]
+  services: ImpactedNode[]
+  incidents: (Rec & { ci_name: string; priority_label: string; state_label: string })[]
+  changes: (Rec & { ci_name: string; state_label: string })[]
+}
+
+export type ServiceHealthRow = MapNode & { dependencies: number; open_incidents: number; causes: MapNode[] }
+
 export class ApiError extends Error {
   detail: string
   constructor(message: string, detail: string) {
@@ -71,6 +119,10 @@ export const api = {
     req<{ result: Rec }>('POST', `/api/now/approval/${table}/${id}`, { decision, comment }).then((r) => r.result),
   kbView: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/view`).then((r) => r.result),
   kbHelpful: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/helpful`).then((r) => r.result),
+  cmdbServices: () => req<{ result: ServiceHealthRow[] }>('GET', '/api/now/cmdb/services').then((r) => r.result),
+  cmdbMap: (id: string, depth: number) => req<{ result: ServiceMapData }>('GET', `/api/now/cmdb/map/${id}?depth=${depth}`).then((r) => r.result),
+  cmdbImpact: (id: string) => req<{ result: ImpactData }>('GET', `/api/now/cmdb/impact/${id}`).then((r) => r.result),
+  declareOutage: (id: string) => req<{ result: Rec }>('POST', `/api/now/cmdb/impact/${id}/outage`).then((r) => r.result),
   search: (q: string) =>
     req<{ result: { table: string; label: string; total: number; records: Rec[] }[] }>('GET', `/api/now/search?q=${encodeURIComponent(q)}`).then((r) => r.result),
 }

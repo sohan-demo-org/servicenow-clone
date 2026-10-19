@@ -148,6 +148,14 @@ export function calcPriority(impact?: string | null, urgency?: string | null): s
   return PRIORITY_MATRIX[`${impact ?? '3'}-${urgency ?? '3'}`] ?? '5'
 }
 
+/** CMDB relationship types, labelled `parent descriptor::child descriptor` like ServiceNow. */
+export const REL_TYPES = c(
+  ['depends_on', 'Depends on::Used by'],
+  ['runs_on', 'Runs on::Runs'],
+  ['hosted_on', 'Hosted on::Hosts'],
+  ['connected_by', 'Connected by::Connects'],
+)
+
 /** SLA resolution targets in hours, keyed by priority. */
 export const SLA_HOURS: Record<string, number> = { '1': 4, '2': 8, '3': 24, '4': 72, '5': 120 }
 
@@ -388,7 +396,23 @@ export const TABLES: Record<string, TableDef> = {
       { table: 'incident', field: 'cmdb_ci', label: 'Incidents' },
       { table: 'problem', field: 'cmdb_ci', label: 'Problems' },
       { table: 'change_request', field: 'cmdb_ci', label: 'Change Requests' },
+      { table: 'cmdb_rel_ci', field: 'parent', label: 'Depends on' },
+      { table: 'cmdb_rel_ci', field: 'child', label: 'Used by' },
     ],
+  },
+  cmdb_rel_ci: {
+    name: 'cmdb_rel_ci',
+    label: 'CI Relationship',
+    plural: 'CI Relationships',
+    displayField: 'type',
+    fields: [
+      { name: 'parent', label: 'Parent', type: 'reference', ref: 'cmdb_ci', mandatory: true },
+      { name: 'type', label: 'Type', type: 'choice', choices: REL_TYPES, mandatory: true },
+      { name: 'child', label: 'Child', type: 'reference', ref: 'cmdb_ci', mandatory: true },
+      ...sysFields,
+    ],
+    listFields: ['parent', 'type', 'child', 'sys_updated_on'],
+    form: [{ left: ['parent', 'type'], right: ['child'] }],
   },
   sys_user: {
     name: 'sys_user',

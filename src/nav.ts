@@ -27,7 +27,10 @@ export const NAV: NavApp[] = [
   {
     label: 'Dashboards',
     agentOnly: true,
-    modules: [{ label: 'ITSM Overview', to: '/' }],
+    modules: [
+      { label: 'ITSM Overview', to: '/' },
+      { label: 'Service Health', to: '/map' },
+    ],
   },
   {
     label: 'Incident',
@@ -82,11 +85,13 @@ export const NAV: NavApp[] = [
     label: 'Configuration',
     agentOnly: true,
     modules: [
+      { label: 'Service Map', to: '/map' },
       { label: 'Servers', to: listUrl('cmdb_ci', 'sys_class_name=cmdb_ci_server') },
       { label: 'Applications', to: listUrl('cmdb_ci', 'sys_class_name=cmdb_ci_appl') },
       { label: 'Databases', to: listUrl('cmdb_ci', 'sys_class_name=cmdb_ci_database') },
       { label: 'Network Gear', to: listUrl('cmdb_ci', 'sys_class_name=cmdb_ci_netgear') },
       { label: 'All CIs', to: listUrl('cmdb_ci') },
+      { label: 'CI Relationships', to: listUrl('cmdb_rel_ci') },
     ],
   },
   {
