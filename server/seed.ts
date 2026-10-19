@@ -1,6 +1,7 @@
 import { addJournal, insertRecord, nowStr, updateRecord } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { calcPriority } from '../shared/schema.ts'
+import { seedServiceMap } from './servicemap.ts'
 
 function rng(seed: number) {
   let s = seed >>> 0
@@ -168,7 +169,12 @@ const COMMENTS = [
 
 export function seed(db: Db): void {
   const count = (db.prepare('SELECT COUNT(*) AS n FROM sys_user').get() as { n: number }).n
-  if (count > 0) return
+  if (count > 0) {
+    const setClass = db.prepare("UPDATE cmdb_ci SET sys_class_name = ? WHERE name = ? AND (sys_class_name IS NULL OR sys_class_name = '')")
+    for (const [name, cls] of CIS) setClass.run(cls, name)
+    seedServiceMap(db)
+    return
+  }
   const rand = rng(42)
   const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)]
   const hoursAgo = (h: number) => nowStr(new Date(Date.now() - h * 3600000))
@@ -386,4 +392,5 @@ export function seed(db: Db): void {
     db.exec('ROLLBACK')
     throw e
   }
+  seedServiceMap(db)
 }

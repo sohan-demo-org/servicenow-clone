@@ -12,6 +12,7 @@ import {
   updateRecord,
 } from './db.ts'
 import type { Db, Row } from './db.ts'
+import { declareOutage, impactAnalysis, serviceHealth, serviceMap } from './servicemap.ts'
 import { TABLES } from '../shared/schema.ts'
 
 interface Actor {
@@ -151,6 +152,22 @@ export function createApp(db: Db) {
   app.post('/api/now/kb/:id/helpful', (req, res) => {
     db.prepare('UPDATE kb_knowledge SET rating = COALESCE(rating, 0) + 1 WHERE sys_id = ?').run(req.params.id)
     res.json({ result: getRecord(db, 'kb_knowledge', req.params.id) })
+  })
+
+  app.get('/api/now/cmdb/services', (_req, res) => {
+    res.json({ result: serviceHealth(db) })
+  })
+
+  app.get('/api/now/cmdb/map/:id', (req, res) => {
+    res.json({ result: serviceMap(db, req.params.id, Number(req.query.depth ?? 3)) })
+  })
+
+  app.get('/api/now/cmdb/impact/:id', (req, res) => {
+    res.json({ result: impactAnalysis(db, req.params.id) })
+  })
+
+  app.post('/api/now/cmdb/impact/:id/outage', (req, res) => {
+    res.status(201).json({ result: declareOutage(db, req.params.id, actorOf(db, req)) })
   })
 
   app.get('/api/now/search', (req, res) => {

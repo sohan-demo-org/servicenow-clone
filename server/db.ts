@@ -22,17 +22,21 @@ export function nowStr(d: Date = new Date()): string {
   return d.toISOString().slice(0, 19).replace('T', ' ')
 }
 
+/** Bookkeeping columns every table gets; all other `sys_*` names (e.g. `sys_class_name`) are ordinary fields. */
+const AUTO_SYS = new Set(['sys_id', 'sys_created_on', 'sys_created_by', 'sys_updated_on', 'sys_updated_by', 'sys_view_count'])
+
 export function openDb(path: string): Db {
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
   for (const t of Object.values(TABLES)) {
-    const cols = t.fields
-      .filter((f) => !f.name.startsWith('sys_'))
-      .map((f) => `"${f.name}" ${f.type === 'integer' ? 'INTEGER' : f.type === 'currency' ? 'REAL' : 'TEXT'}`)
+    const fields = t.fields.filter((f) => !AUTO_SYS.has(f.name))
+    const colDef = (f: (typeof fields)[number]) => `"${f.name}" ${f.type === 'integer' ? 'INTEGER' : f.type === 'currency' ? 'REAL' : 'TEXT'}`
     db.exec(
-      `CREATE TABLE IF NOT EXISTS ${t.name} (sys_id TEXT PRIMARY KEY, ${cols.join(', ')}, ` +
+      `CREATE TABLE IF NOT EXISTS ${t.name} (sys_id TEXT PRIMARY KEY, ${fields.map(colDef).join(', ')}, ` +
         'sys_created_on TEXT, sys_created_by TEXT, sys_updated_on TEXT, sys_updated_by TEXT, sys_view_count INTEGER DEFAULT 0)',
     )
+    const existing = new Set((db.prepare(`PRAGMA table_info(${t.name})`).all() as { name: string }[]).map((c) => c.name))
+    for (const f of fields) if (!existing.has(f.name)) db.exec(`ALTER TABLE ${t.name} ADD COLUMN ${colDef(f)}`)
   }
   db.exec(`CREATE TABLE IF NOT EXISTS sys_journal_field (
     sys_id TEXT PRIMARY KEY, name TEXT, element_id TEXT, element TEXT, value TEXT,
@@ -218,7 +222,7 @@ function displayOf(db: Db, table: string, field: string, value: unknown): string
 function clean(t: TableDef, body: Record<string, unknown>): Row {
   const out: Row = {}
   for (const f of t.fields) {
-    if (!(f.name in body) || f.name.startsWith('sys_')) continue
+    if (!(f.name in body) || AUTO_SYS.has(f.name)) continue
     const v = body[f.name]
     if (v == null || v === '') out[f.name] = null
     else if (f.type === 'integer') out[f.name] = Math.trunc(Number(v)) || 0

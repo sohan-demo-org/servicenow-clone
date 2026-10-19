@@ -102,3 +102,46 @@ describe('Table API', () => {
     assert.ok(search.json.result.some((g: { table: string }) => g.table === 'kb_knowledge'))
   })
 })
+
+describe('Service Map', () => {
+  const ciId = async (name: string) => (await call('GET', `/api/now/table/cmdb_ci?sysparm_query=name=${encodeURIComponent(name)}`)).json.result[0].sys_id as string
+
+  it('stores the CI class so class-filtered CMDB lists work', async () => {
+    const r = await call('GET', '/api/now/table/cmdb_ci?sysparm_query=sys_class_name=cmdb_ci_service&sysparm_limit=50')
+    assert.equal(r.status, 200)
+    assert.ok(r.json.total >= 6)
+  })
+
+  it('rolls service health up from dependencies', async () => {
+    const r = await call('GET', '/api/now/cmdb/services')
+    const o2c = r.json.result.find((s: { name: string }) => s.name === 'Order to Cash')
+    assert.equal(o2c.health, 'ok')
+    assert.equal(o2c.rollup, 'critical')
+    assert.ok(o2c.causes.some((c: { name: string }) => c.name === 'SAP ERP Production'))
+  })
+
+  it('returns consumers above and dependencies below the focus CI', async () => {
+    const sap = await ciId('SAP ERP Production')
+    const r = await call('GET', `/api/now/cmdb/map/${sap}?depth=2`)
+    const level = Object.fromEntries(r.json.result.nodes.map((n: { name: string; level: number }) => [n.name, n.level]))
+    assert.equal(level['SAP ERP Production'], 0)
+    assert.equal(level['Order to Cash'], -1)
+    assert.equal(level['ora-prod-db1'], 1)
+    assert.equal(level['core-sw-sd-01'], 2)
+    assert.equal(level['fw-edge-ams'], undefined)
+  })
+
+  it('computes the blast radius of a core switch outage and declares a P1', async () => {
+    const sw = await ciId('core-sw-sd-01')
+    const r = await call('GET', `/api/now/cmdb/impact/${sw}`)
+    const names = r.json.result.services.map((s: { name: string }) => s.name).sort()
+    assert.deepEqual(names, ['Corporate VPN', 'Financial Reporting', 'Hire to Retire', 'Order to Cash'])
+    const o2c = r.json.result.services.find((s: { name: string }) => s.name === 'Order to Cash')
+    assert.equal(o2c.path.at(-1), 'core-sw-sd-01')
+    const inc = await call('POST', `/api/now/cmdb/impact/${sw}/outage`)
+    assert.equal(inc.status, 201)
+    assert.equal(inc.json.result.priority, '1')
+    assert.equal(inc.json.result.cmdb_ci, sw)
+    assert.match(inc.json.result.description, /Order to Cash/)
+  })
+})
