@@ -8,6 +8,7 @@ import { seed } from './seed.ts'
 import { classify, rank } from './va.ts'
 
 let server: Server
+let db: ReturnType<typeof openDb>
 let base = ''
 const ids: Record<string, string> = {}
 
@@ -25,7 +26,7 @@ async function call(as: string, path: string, body: unknown, method = 'POST') {
 const say = (as: string, body: unknown) => call(as, '/api/now/va/message', body)
 
 before(async () => {
-  const db = openDb(':memory:')
+  db = openDb(':memory:')
   seed(db)
   server = createApp(db).listen(0)
   await new Promise((r) => server.once('listening', r))
@@ -107,10 +108,38 @@ describe('Virtual Agent', () => {
     assert.equal(r.json.result.messages[0].cards[0].kind, 'item')
   })
 
+  it('treats "need a fix" as troubleshooting, but "need a monitor" as an order', async () => {
+    const fix = await say('abel.tuter', { text: 'I need a fix for my VPN' })
+    assert.equal(fix.json.result.messages[0].cards[0].kind, 'kb')
+    assert.match(fix.json.result.messages[0].cards[0].title, /VPN/)
+    const order = await say('abel.tuter', { text: 'I need a monitor' })
+    assert.equal(order.json.result.messages[0].cards[0].kind, 'item')
+  })
+
+  it('keeps the full text of a long report on the incident', async () => {
+    const long = `My laptop docking station stops charging every afternoon. ${'Details: it happens after lunch when I reconnect the dock. '.repeat(4)}END-OF-REPORT`
+    const r = await say('abel.tuter', { action: { type: 'create_incident', short_description: long } })
+    const sysId = r.json.result.messages[0].cards[0].to.split('/').pop()
+    const inc = (await call('beth.anglin', `/api/now/table/incident/${sysId}`, null, 'GET')).json.result
+    assert.ok(inc.short_description.length <= 160)
+    assert.match(inc.description, /END-OF-REPORT$/)
+  })
+
+  it('finds articles beyond the old page limit', async () => {
+    for (let i = 0; i < 205; i++) {
+      await call('beth.anglin', '/api/now/table/kb_knowledge', { short_description: `Filler article ${i}`, text: 'Nothing to see here.', workflow_state: 'published' })
+    }
+    db.prepare("UPDATE kb_knowledge SET sys_view_count = 100000 WHERE short_description LIKE 'Filler article %'").run()
+    const r = await say('abel.tuter', { text: 'my vpn keeps disconnecting' })
+    assert.match(r.json.result.messages[0].cards[0].title, /VPN/)
+  })
+
   it('classifies and ranks text', () => {
     assert.deepEqual(classify('Got a suspicious phishing email'), { category: 'security', subcategory: 'phishing', urgency: '2' })
     assert.equal(classify('printer is broken, urgent!').category, 'hardware')
     assert.equal(classify('printer is broken, urgent!').urgency, '1')
     assert.equal(rank('printer jammed', [{ title: 'Password policy', body: '' }, { title: 'Clearing a printer jam', body: '' }])[0].index, 1)
+    const bodyOnly = rank('globalprotect', [{ title: 'Remote access', body: 'Install the GlobalProtect client' }, { title: 'Printers', body: 'Toner' }])
+    assert.deepEqual(bodyOnly.map((r) => r.index), [0])
   })
 })

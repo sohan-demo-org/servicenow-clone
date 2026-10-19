@@ -96,7 +96,9 @@ const URGENT = /\b(urgent|asap|emergency|outage|down|critical|can'?t work|cannot
 const GREETING = /^(hi|hello|hey|yo|good (morning|afternoon|evening)|menu|start|help|start over)[!. ]*$/i
 const THANKS = /^(thanks|thank you|thx|ty|cheers|great|awesome|perfect)\b/i
 const STATUS = /\b(status|my tickets?|my incidents?|my requests?|track|tracking|update on|open tickets?|what'?s happening with)\b/i
-const ORDER = /\b(order|buy|purchase|request (a|an|new)|need (a|an) new|need (a|an)|get (a|an) new|new (laptop|phone|monitor|headset)|access to)\b/i
+const ORDER = /\b(order|buy|purchase|request (a|an|new)|need (a|an) new|get (a|an) new|new (laptop|phone|monitor|headset)|access to)\b/i
+const SOFT_ORDER = /\b(need|want|looking for) (a|an)\b/i
+const TROUBLE = /\b(fix|fixed|fixing|help|reset|unlock|broken|issue|problem|error|trouble|not working|stopped|keeps|won'?t|can'?t|cannot)\b/i
 const TICKET_NO = /\b(INC|RITM|PRB|CHG)\d{7}\b/i
 
 const MENU_CHIPS: VaChip[] = [
@@ -126,12 +128,13 @@ function termMatches(term: string, words: string[]): boolean {
 
 /**
  * Rank records by keyword overlap. Each query word scores its best match: 3 in the title, 1 in the body,
- * and a synonym match scores less (2 / 0.5) so the literal word wins ties.
+ * and a synonym match scores less (2 / 0.5) so the literal word wins ties. Results need a score of 2; if none do,
+ * the single best literal body match (score 1) is returned so a body-only keyword still finds something.
  */
 export function rank(query: string, docs: { title: string; body: string }[]): { index: number; score: number }[] {
   const words = [...new Set(tokenize(query))]
   if (!words.length) return []
-  return docs
+  const scored = docs
     .map((d, index) => {
       const title = tokenize(d.title)
       const body = tokenize(d.body)
@@ -147,8 +150,21 @@ export function rank(query: string, docs: { title: string; body: string }[]): { 
       }
       return { index, score }
     })
-    .filter((r) => r.score >= 2)
     .sort((a, b) => b.score - a.score)
+  const strong = scored.filter((r) => r.score >= 2)
+  return strong.length ? strong : scored.filter((r) => r.score >= 1).slice(0, 1)
+}
+
+/**
+ * Pre-filter rows in SQL to those that could match `rank`, so no matching record is cut off by a page limit.
+ * Each term (and synonym) is matched on its first 3 letters, a superset of rank's prefix matching.
+ */
+function searchRows(db: Db, table: string, where: string, cols: string[], text: string, order: string): Row[] {
+  const terms = [...new Set(tokenize(text).flatMap((w) => [w, ...(SYNONYMS[w] ?? [])]).map((t) => (t.length > 3 ? t.slice(0, 3) : t)))]
+  if (!terms.length) return []
+  const like = terms.flatMap(() => cols.map((c) => `"${c}" LIKE ?`))
+  const params = terms.flatMap((t) => cols.map(() => `%${t}%`))
+  return db.prepare(`SELECT * FROM ${table} WHERE ${where} AND (${like.join(' OR ')}) ORDER BY ${order}`).all(...params) as Row[]
 }
 
 export function classify(text: string): { category: string; subcategory: string | null; urgency: string } {
@@ -211,7 +227,7 @@ function lookupTicket(db: Db, actor: VaActor, number: string): VaReply {
 }
 
 function catalog(db: Db, text: string, explicit: boolean): VaReply | null {
-  const items = listRecords(db, 'sc_cat_item', { query: 'active=true', limit: 100, ctx: {} }).result
+  const items = searchRows(db, 'sc_cat_item', "active = 'true'", ['name', 'short_description', 'category'], text, 'name')
   const hits = rank(text, items.map((i) => ({ title: s(i.name), body: `${s(i.short_description)} ${s(i.category)}` }))).slice(0, 3)
   if (!hits.length) {
     if (!explicit) return null
@@ -243,7 +259,7 @@ function catalog(db: Db, text: string, explicit: boolean): VaReply | null {
 }
 
 function knowledge(db: Db, text: string): VaReply {
-  const articles = listRecords(db, 'kb_knowledge', { query: 'workflow_state=published', limit: 200, ctx: {} }).result
+  const articles = searchRows(db, 'kb_knowledge', "workflow_state = 'published'", ['short_description', 'text'], text, 'sys_view_count DESC')
   const hits = rank(text, articles.map((a) => ({ title: s(a.short_description), body: s(a.text) }))).slice(0, 3)
   const { urgency } = classify(text)
   const escalate: VaChip = { label: 'Still need help', action: { type: 'create_incident', short_description: text, urgency } }
@@ -265,9 +281,10 @@ function knowledge(db: Db, text: string): VaReply {
 }
 
 function createIncident(db: Db, actor: VaActor, action: Extract<VaAction, { type: 'create_incident' }>): VaReply {
-  const short = s(action.short_description).trim().slice(0, 160)
+  const full = s(action.short_description).trim().slice(0, 4000)
+  const short = full.length > 160 ? `${full.slice(0, 157).trimEnd()}...` : full
   if (!short) throw new HttpError(400, 'Short description is required')
-  const { category, subcategory, urgency: guessed } = classify(short)
+  const { category, subcategory, urgency: guessed } = classify(full)
   const urgency = ['1', '2', '3'].includes(s(action.urgency)) ? s(action.urgency) : guessed
   const group = db.prepare('SELECT sys_id FROM sys_user_group WHERE name = ?').get(GROUP_FOR_CATEGORY[category]) as { sys_id: string } | undefined
   const inc = insertRecord(
@@ -276,7 +293,7 @@ function createIncident(db: Db, actor: VaActor, action: Extract<VaAction, { type
     {
       caller_id: actor.sys_id,
       short_description: short,
-      description: `Reported via Virtual Agent chat:\n${short}`,
+      description: `Reported via Virtual Agent chat:\n${full}`,
       category,
       subcategory,
       impact: urgency === '1' ? '2' : '3',
@@ -286,7 +303,7 @@ function createIncident(db: Db, actor: VaActor, action: Extract<VaAction, { type
     },
     actor,
   ) as Row & { _dv?: Record<string, string> }
-  addJournal(db, 'incident', String(inc.sys_id), 'comments', `Opened from a Virtual Agent conversation: "${short}"`, actor)
+  addJournal(db, 'incident', String(inc.sys_id), 'comments', `Opened from a Virtual Agent conversation: "${full}"`, actor)
   const facts = [
     `Category: ${choiceLabel('incident', 'category', category)}${subcategory ? ` / ${choiceLabel('incident', 'subcategory', subcategory)}` : ''}`,
     `Priority: ${choiceLabel('incident', 'priority', s(inc.priority))}`,
@@ -324,6 +341,9 @@ export function vaReply(db: Db, actor: VaActor | null, body: VaRequest): VaReply
   const explicitOrder = ORDER.test(text)
   if (explicitOrder) {
     const reply = catalog(db, text.replace(/\b(i want to )?order something\b/i, ''), true)
+    if (reply) return reply
+  } else if (SOFT_ORDER.test(text) && !TROUBLE.test(text)) {
+    const reply = catalog(db, text, false)
     if (reply) return reply
   }
   return knowledge(db, text)
