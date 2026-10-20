@@ -33,6 +33,7 @@ Production-style run: `npm run build && npm start` (Express serves `dist/` on :3
 - **Activity stream**: work notes vs. additional comments, plus automatic *field change* audit entries.
 - **Business rules (server)**: auto-numbering (INC/PRB/CHG/RITM/KB), priority matrix, mandatory Resolution code/notes to resolve, auto In Progress on assignment, change approval flow (Request Approval -> Approve/Reject -> Scheduled -> Implement -> Review -> Closed), catalog orders >= $1,000 need approval.
 - **Dashboard**: KPI tiles and charts that drill down into filtered lists.
+- **Change Schedule**: 2-week timeline of change requests per CI with a *now* line and hatched blackout windows; server-side conflict engine (CI already scheduled, assignee double-booked, blackout overlap) that keeps a *Conflict status* on every change; drag a bar to reschedule with a live conflict preview, confirm step and an automatic work note; *Find next conflict-free window*; conflict banner on the change form; *Blackout Windows* table.
 - **Service Portal**: catalog with variables and ordering, Get Help (record producer to Incident), My Tickets with conversation, Knowledge Base with search and "helpful" votes.
 
 ## Architecture
@@ -58,6 +59,9 @@ src/               React 19 + Vite + React Router
 | POST | `/api/now/catalog/:item/order` | creates a Requested Item |
 | POST | `/api/now/approval/:table/:sys_id` | `{ "decision": "approved" \| "rejected" }` |
 | GET | `/api/now/search?q=` | global search |
+| GET | `/api/now/change_schedule?from=&to=` | changes, blackouts and conflicts in a window |
+| POST | `/api/now/change_schedule/conflicts` | conflict check for an unsaved slot `{ sys_id?, cmdb_ci, assigned_to, start_date, end_date }` |
+| POST | `/api/now/change_schedule/:sys_id/next_window` | next conflict-free window keeping the change's duration |
 
 Send `X-User: <sys_id>` to act as a user (the UI does this after login). Supported query operators: `=`, `!=`, `LIKE`, `NOTLIKE`, `STARTSWITH`, `IN`, `NOTIN`, `ISEMPTY`, `ISNOTEMPTY`, `<`, `>`, `<=`, `>=`, `^OR`, `ORDERBY`/`ORDERBYDESC`, plus `javascript:gs.getUserID()` and `javascript:gs.daysAgo(n)`.
 

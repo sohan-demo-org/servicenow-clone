@@ -19,6 +19,27 @@ export interface StatRow {
   count: number
 }
 
+export interface Conflict {
+  type: 'ci_already_scheduled' | 'assignee_already_scheduled' | 'blackout' | 'invalid_window'
+  label: string
+  message: string
+  related?: { table: string; sys_id: string; display: string; start_date: string; end_date: string }
+}
+
+export interface ScheduleSlot {
+  sys_id?: string
+  cmdb_ci?: string | null
+  assigned_to?: string | null
+  start_date?: string | null
+  end_date?: string | null
+}
+
+export interface ChangeScheduleData {
+  changes: Rec[]
+  blackouts: Rec[]
+  conflicts: Record<string, Conflict[]>
+}
+
 export class ApiError extends Error {
   detail: string
   constructor(message: string, detail: string) {
@@ -71,6 +92,11 @@ export const api = {
     req<{ result: Rec }>('POST', `/api/now/approval/${table}/${id}`, { decision, comment }).then((r) => r.result),
   kbView: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/view`).then((r) => r.result),
   kbHelpful: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/helpful`).then((r) => r.result),
+  changeSchedule: (from: string, to: string) =>
+    req<{ result: ChangeScheduleData }>('GET', `/api/now/change_schedule?${new URLSearchParams({ from, to })}`).then((r) => r.result),
+  changeConflicts: (slot: ScheduleSlot) => req<{ result: Conflict[] }>('POST', '/api/now/change_schedule/conflicts', slot).then((r) => r.result),
+  nextWindow: (id: string, after?: string) =>
+    req<{ result: { start_date: string; end_date: string } }>('POST', `/api/now/change_schedule/${id}/next_window`, { after }).then((r) => r.result),
   search: (q: string) =>
     req<{ result: { table: string; label: string; total: number; records: Rec[] }[] }>('GET', `/api/now/search?q=${encodeURIComponent(q)}`).then((r) => r.result),
 }

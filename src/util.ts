@@ -34,6 +34,10 @@ export function parseDate(v: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+export function nowStr(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 19).replace('T', ' ')
+}
+
 export function toInputDate(v: string | null | undefined): string {
   const d = parseDate(v ?? '')
   if (!d) return ''

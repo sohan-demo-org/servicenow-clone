@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { isAgent, useAuth } from './auth.tsx'
 import { Layout } from './components/Layout.tsx'
+import { ChangeSchedule } from './pages/ChangeSchedule.tsx'
 import { Dashboard } from './pages/Dashboard.tsx'
 import { FormPage } from './pages/FormPage.tsx'
 import { ListPage } from './pages/ListPage.tsx'
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/list/:table" element={<ListPage />} />
           <Route path="/record/:table/:id" element={<FormPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/change/schedule" element={<ChangeSchedule />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

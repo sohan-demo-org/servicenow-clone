@@ -22,6 +22,7 @@ const FAVORITES = [
   { label: 'Incidents - Open', to: listUrl('incident', 'stateNOTIN6,7,8') },
   { label: 'ITSM Overview', to: '/' },
   { label: 'Change - Awaiting Approval', to: listUrl('change_request', 'approval=requested') },
+  { label: 'Change Schedule', to: '/change/schedule' },
   { label: 'Service Portal', to: '/sp' },
 ]
 
