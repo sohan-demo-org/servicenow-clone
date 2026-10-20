@@ -1,4 +1,4 @@
-# ServiceNow Clone
+# ServiceNow Clone - Demo
 
 A full-stack, ServiceNow-style ITSM demo app: Incident, Problem, Change, Service Catalog / Requested Items, Knowledge, CMDB, users & groups, an ITSM Overview dashboard and an end-user Service Portal.
 
