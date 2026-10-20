@@ -93,6 +93,8 @@ export const CHANGE_STATE = c(
   ['4', 'Canceled'],
 )
 
+export const CONFLICT_STATUS = c(['not_run', 'Not Run'], ['none', 'No Conflict'], ['conflict', 'Conflict'])
+
 export const APPROVAL = c(
   ['not requested', 'Not Yet Requested'],
   ['requested', 'Requested'],
@@ -268,9 +270,11 @@ export const TABLES: Record<string, TableDef> = {
       { name: 'test_plan', label: 'Test plan', type: 'text' },
       { name: 'start_date', label: 'Planned start date', type: 'datetime' },
       { name: 'end_date', label: 'Planned end date', type: 'datetime' },
+      { name: 'conflict_status', label: 'Conflict status', type: 'choice', choices: CONFLICT_STATUS, readOnly: true },
+      { name: 'conflict_last_run', label: 'Conflict last run', type: 'datetime', readOnly: true },
       ...sysFields,
     ],
-    listFields: ['number', 'short_description', 'type', 'state', 'risk', 'approval', 'assignment_group', 'start_date', 'end_date'],
+    listFields: ['number', 'short_description', 'type', 'state', 'risk', 'approval', 'conflict_status', 'start_date', 'end_date'],
     form: [
       {
         left: ['number', 'requested_by', 'category', 'cmdb_ci', 'type'],
@@ -280,9 +284,27 @@ export const TABLES: Record<string, TableDef> = {
     ],
     tabs: [
       { title: 'Planning', left: [], right: [], full: ['justification', 'implementation_plan', 'backout_plan', 'test_plan'] },
-      { title: 'Schedule', left: ['start_date'], right: ['end_date'] },
+      { title: 'Schedule', left: ['start_date', 'end_date'], right: ['conflict_status', 'conflict_last_run'] },
     ],
     related: [{ table: 'incident', field: 'rfc', label: 'Incidents Fixed By Change' }],
+  },
+  cmn_schedule_blackout: {
+    name: 'cmn_schedule_blackout',
+    label: 'Blackout Window',
+    plural: 'Blackout Windows',
+    displayField: 'name',
+    defaultSort: 'ORDERBYstart_date',
+    fields: [
+      { name: 'name', label: 'Name', type: 'string', mandatory: true },
+      { name: 'start_date', label: 'Start', type: 'datetime', mandatory: true },
+      { name: 'end_date', label: 'End', type: 'datetime', mandatory: true },
+      { name: 'cmdb_ci', label: 'Applies to CI', type: 'reference', ref: 'cmdb_ci' },
+      { name: 'active', label: 'Active', type: 'boolean' },
+      { name: 'reason', label: 'Reason', type: 'text' },
+      ...sysFields,
+    ],
+    listFields: ['name', 'start_date', 'end_date', 'cmdb_ci', 'active'],
+    form: [{ left: ['name', 'cmdb_ci', 'active'], right: ['start_date', 'end_date'], full: ['reason'] }],
   },
   sc_req_item: {
     name: 'sc_req_item',

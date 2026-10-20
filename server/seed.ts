@@ -381,6 +381,41 @@ export function seed(db: Db): void {
       )
       db.prepare('UPDATE kb_knowledge SET sys_view_count = ?, rating = ? WHERE sys_id = ?').run(Math.floor(rand() * 900) + 20, Math.floor(rand() * 40), kb.sys_id)
     })
+    // Change Schedule demo data: blackout windows plus a few changes that deliberately collide.
+    const blackout = (name: string, fromH: number, toH: number, ci: string | null, reason: string) =>
+      insertRecord(db, 'cmn_schedule_blackout', { name, start_date: hoursAgo(-fromH), end_date: hoursAgo(-toH), cmdb_ci: ci ? cis[ci].sys_id : null, active: 'true', reason }, actorOf(users.admin))
+    blackout('Q4 financial close freeze', 84, 108, null, 'No production changes while Finance closes the quarter. Emergency changes need CIO sign-off.')
+    blackout('SAP year-end batch processing', 20, 44, 'SAP ERP Production', 'Payroll and GL batch jobs run continuously; SAP must stay untouched.')
+    const demoChange = (sd: string, cat: string, ci: string, type: string, group: string, state: string, fromH: number, hours: number, assignee: string | number | null) =>
+      insertRecord(
+        db,
+        'change_request',
+        {
+          short_description: sd,
+          category: cat,
+          cmdb_ci: cis[ci].sys_id,
+          type,
+          state,
+          approval: type === 'standard' || state === '-2' ? 'approved' : state === '-3' ? 'requested' : 'not requested',
+          risk: type === 'standard' ? '4' : '3',
+          impact: '2',
+          requested_by: users['don.goodliffe'].sys_id,
+          assignment_group: groups[group].sys_id,
+          assigned_to: assignee,
+          description: `${sd}.`,
+          implementation_plan: '1. Notify stakeholders\n2. Take snapshot/backup\n3. Apply change\n4. Validate service health',
+          backout_plan: 'Restore from snapshot and validate.',
+          start_date: hoursAgo(-fromH),
+          end_date: hoursAgo(-fromH - hours),
+          sys_created_on: hoursAgo(20),
+        },
+        actorOf(users['don.goodliffe']),
+        { skipRules: true },
+      )
+    demoChange('Apply Jenkins controller security patch', 'software', 'Jenkins CI', 'normal', 'Software', '-3', 32, 4, users['beth.anglin'].sys_id)
+    demoChange('SAP HANA memory parameter tuning', 'software', 'SAP ERP Production', 'normal', 'Software', '-4', 26, 3, users['beth.anglin'].sys_id)
+    demoChange('Rotate Exchange Online DKIM keys', 'software', 'Email - Exchange Online', 'normal', 'Service Desk', '-2', 61, 2, changes[8].assigned_to)
+    demoChange('Renew TLS certificate on lnux-web-01', 'software', 'lnux-web-01', 'standard', 'Software', '-2', 44, 2, users['itil'].sys_id)
     db.exec('COMMIT')
   } catch (e) {
     db.exec('ROLLBACK')

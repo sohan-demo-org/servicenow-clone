@@ -5,6 +5,7 @@ import express from 'express'
 import { createApp } from './app.ts'
 import { openDb } from './db.ts'
 import { seed } from './seed.ts'
+import { refreshConflictStatus } from './changeschedule.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dbPath = process.env.DB_PATH ?? resolve(root, 'data', 'servicenow.db')
@@ -12,6 +13,7 @@ if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true })
 
 const db = openDb(dbPath)
 seed(db)
+refreshConflictStatus(db)
 
 const app = createApp(db)
 const dist = resolve(root, 'dist')

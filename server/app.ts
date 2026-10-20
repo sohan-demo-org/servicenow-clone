@@ -12,6 +12,8 @@ import {
   updateRecord,
 } from './db.ts'
 import type { Db, Row } from './db.ts'
+import { findConflicts, nextWindow, refreshConflictStatus, schedule } from './changeschedule.ts'
+import type { Slot } from './changeschedule.ts'
 import { TABLES } from '../shared/schema.ts'
 
 interface Actor {
@@ -29,6 +31,7 @@ function actorOf(db: Db, req: Request): Actor | null {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+const SCHEDULE_TABLES = new Set(['change_request', 'cmn_schedule_blackout'])
 
 export function createApp(db: Db) {
   const app = express()
@@ -58,8 +61,15 @@ export function createApp(db: Db) {
     res.json({ result: getRecord(db, req.params.table, req.params.id) })
   })
 
+  /** Re-run the change conflict checker after writes that can move a change or blackout window. */
+  const afterWrite = (table: string, rec?: Row): Row | undefined => {
+    if (!SCHEDULE_TABLES.has(table)) return rec
+    refreshConflictStatus(db)
+    return rec && getRecord(db, table, String(rec.sys_id))
+  }
+
   app.post('/api/now/table/:table', (req, res) => {
-    res.status(201).json({ result: insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req)) })
+    res.status(201).json({ result: afterWrite(req.params.table, insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req))) })
   })
 
   app.patch('/api/now/table/:table/:id', (req, res) => {
@@ -70,11 +80,12 @@ export function createApp(db: Db) {
       if (work_notes) addJournal(db, req.params.table, req.params.id, 'work_notes', String(work_notes), actor)
       if (comments) addJournal(db, req.params.table, req.params.id, 'comments', String(comments), actor)
     }
-    res.json({ result })
+    res.json({ result: afterWrite(req.params.table, result) })
   })
 
   app.delete('/api/now/table/:table/:id', (req, res) => {
     deleteRecord(db, req.params.table, req.params.id)
+    afterWrite(req.params.table)
     res.status(204).end()
   })
 
@@ -140,7 +151,24 @@ export function createApp(db: Db) {
     else throw new HttpError(400, `Approvals are not supported for ${table}`)
     const result = updateRecord(db, table, id, fields, actor)
     addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
-    res.json({ result })
+    res.json({ result: afterWrite(table, result) })
+  })
+
+  app.get('/api/now/change_schedule', (req, res) => {
+    const from = str(req.query.from)
+    const to = str(req.query.to)
+    if (!from || !to) throw new HttpError(400, 'from and to are required')
+    res.json({ result: schedule(db, from, to) })
+  })
+
+  app.post('/api/now/change_schedule/conflicts', (req, res) => {
+    const b = (req.body ?? {}) as Record<string, unknown>
+    const slot: Slot = { sys_id: str(b.sys_id), cmdb_ci: str(b.cmdb_ci) || null, assigned_to: str(b.assigned_to) || null, start_date: str(b.start_date), end_date: str(b.end_date) }
+    res.json({ result: findConflicts(db, slot) })
+  })
+
+  app.post('/api/now/change_schedule/:id/next_window', (req, res) => {
+    res.json({ result: nextWindow(db, req.params.id, str(req.body?.after)) })
   })
 
   app.post('/api/now/kb/:id/view', (req, res) => {

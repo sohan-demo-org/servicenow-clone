@@ -33,6 +33,11 @@ export function openDb(path: string): Db {
       `CREATE TABLE IF NOT EXISTS ${t.name} (sys_id TEXT PRIMARY KEY, ${cols.join(', ')}, ` +
         'sys_created_on TEXT, sys_created_by TEXT, sys_updated_on TEXT, sys_updated_by TEXT, sys_view_count INTEGER DEFAULT 0)',
     )
+    const existing = new Set((db.prepare(`PRAGMA table_info(${t.name})`).all() as { name: string }[]).map((c) => c.name))
+    for (const col of cols) {
+      const name = col.slice(1, col.indexOf('"', 1))
+      if (!existing.has(name)) db.exec(`ALTER TABLE ${t.name} ADD COLUMN ${col}`)
+    }
   }
   db.exec(`CREATE TABLE IF NOT EXISTS sys_journal_field (
     sys_id TEXT PRIMARY KEY, name TEXT, element_id TEXT, element TEXT, value TEXT,

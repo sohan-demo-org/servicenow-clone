@@ -5,6 +5,7 @@ import type { FieldDef, FormSection } from '../../shared/schema.ts'
 import { ApiError, api } from '../api.ts'
 import type { JournalEntry, Rec } from '../api.ts'
 import { ActivityStream } from '../components/ActivityStream.tsx'
+import { ConflictBanner } from '../components/ConflictBanner.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
@@ -434,6 +435,12 @@ export function FormPage() {
 
       <div className="sn-form">
         {table === 'incident' && rec && <SlaBar rec={rec} />}
+        {table === 'change_request' && (
+          <ConflictBanner
+            inactive={['3', '4'].includes(value('state'))}
+            slot={{ sys_id: isNew ? undefined : id, cmdb_ci: value('cmdb_ci') || null, assigned_to: value('assigned_to') || null, start_date: value('start_date'), end_date: value('end_date') }}
+          />
+        )}
         {table === 'change_request' && rec && (
           <div className="sn-stepper">
             {['-5', '-4', '-3', '-2', '-1', '0', '3'].map((s) => {
