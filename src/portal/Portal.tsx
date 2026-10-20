@@ -6,6 +6,8 @@ import type { JournalEntry, Rec } from '../api.ts'
 import { Icon } from '../components/Icon.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { initials, recordUrl, timeAgo } from '../util.ts'
+import { VirtualAgent } from './VirtualAgent.tsx'
+import { VA_TICKET_CREATED_EVENT, openVirtualAgent } from './vaEvents.ts'
 
 const CATS = [
   { value: '', label: 'All items' },
@@ -49,6 +51,7 @@ export function PortalLayout() {
       </header>
       <Outlet />
       <footer className="sp-footer">ServiceNow clone · unaffiliated demo</footer>
+      <VirtualAgent />
     </div>
   )
 }
@@ -80,13 +83,20 @@ export function PortalHome() {
     document.title = 'Service Portal | ServiceNow Clone'
     api.list('sc_cat_item', { query: 'active=true^ORDERBYname', limit: 6 }).then((r) => setItems(r.result))
     api.list('kb_knowledge', { query: 'workflow_state=published^ORDERBYDESCsys_view_count', limit: 5 }).then((r) => setArticles(r.result))
-    api.list('incident', { query: 'caller_id=javascript:gs.getUserID()^stateNOTIN6,7,8^ORDERBYDESCsys_updated_on', limit: 4 }).then((r) => setMine(r.result))
+    const loadMine = () =>
+      api.list('incident', { query: 'caller_id=javascript:gs.getUserID()^stateNOTIN6,7,8^ORDERBYDESCsys_updated_on', limit: 4 }).then((r) => setMine(r.result))
+    void loadMine()
+    window.addEventListener(VA_TICKET_CREATED_EVENT, loadMine)
+    return () => window.removeEventListener(VA_TICKET_CREATED_EVENT, loadMine)
   }, [])
   return (
     <>
       <section className="sp-hero">
         <h1>Good day, {String(user?.name ?? '').split(' ')[0]}. How can we help?</h1>
         <PortalSearch big />
+        <button className="sp-hero-va" onClick={() => openVirtualAgent()}>
+          or chat with the Virtual Agent
+        </button>
       </section>
       <div className="sp-container">
         <div className="sp-tiles">

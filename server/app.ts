@@ -13,6 +13,7 @@ import {
 } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { TABLES } from '../shared/schema.ts'
+import { vaReply } from './va.ts'
 
 interface Actor {
   sys_id: string
@@ -151,6 +152,10 @@ export function createApp(db: Db) {
   app.post('/api/now/kb/:id/helpful', (req, res) => {
     db.prepare('UPDATE kb_knowledge SET rating = COALESCE(rating, 0) + 1 WHERE sys_id = ?').run(req.params.id)
     res.json({ result: getRecord(db, 'kb_knowledge', req.params.id) })
+  })
+
+  app.post('/api/now/va/message', (req, res) => {
+    res.json({ result: vaReply(db, actorOf(db, req), req.body ?? {}) })
   })
 
   app.get('/api/now/search', (req, res) => {
