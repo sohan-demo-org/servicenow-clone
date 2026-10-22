@@ -38,6 +38,7 @@ export const NAV: NavApp[] = [
       { label: 'Open', to: listUrl('incident', ACTIVE_INC) },
       { label: 'Open - Unassigned', to: listUrl('incident', `assigned_toISEMPTY^${ACTIVE_INC}`) },
       { label: 'Resolved', to: listUrl('incident', 'state=6') },
+      { label: 'Incident Clusters', to: '/incident/clusters' },
       { label: 'All', to: listUrl('incident') },
     ],
   },
