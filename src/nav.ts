@@ -19,6 +19,7 @@ export const NAV: NavApp[] = [
     label: 'Self-Service',
     modules: [
       { label: 'Service Portal', to: '/sp' },
+      { label: 'Notifications', to: '/notifications' },
       { label: 'My Incidents', to: listUrl('incident', `caller_id=${ME}`) },
       { label: 'My Requests', to: listUrl('sc_req_item', `requested_for=${ME}`) },
       { label: 'Knowledge', to: '/sp/kb' },

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { JournalEntry } from '../api.ts'
 import { formatDate, initials, timeAgo } from '../util.ts'
+import { MentionText } from './MentionText.tsx'
+import { MentionTextarea } from './MentionTextarea.tsx'
 
 interface Props {
   entries: JournalEntry[]
@@ -30,13 +32,14 @@ export function ActivityStream({ entries, onPost, allowWorkNotes, hideAudit }: P
   return (
     <div className="sn-activity">
       <div className={`sn-compose ${workNotes ? 'work' : ''}`}>
-        <textarea
+        <MentionTextarea
           className="sn-input"
           rows={3}
-          placeholder={workNotes ? 'Work notes (internal, visible to fulfillers only)' : 'Additional comments (customer visible)'}
+          placeholder={`${workNotes ? 'Work notes (internal, visible to fulfillers only)' : 'Additional comments (customer visible)'} - type @ to mention someone`}
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          data-testid="journal-input"
+          onChange={setText}
+          agentsOnly={workNotes}
+          testId="journal-input"
         />
         <div className="sn-compose-bar">
           {allowWorkNotes && (
@@ -88,7 +91,7 @@ export function ActivityStream({ entries, onPost, allowWorkNotes, hideAudit }: P
                   </tbody>
                 </table>
               ) : (
-                <div className="sn-entry-text">{e.value}</div>
+                <MentionText className="sn-entry-text" text={e.value} />
               )}
             </div>
           </li>

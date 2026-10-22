@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './Icon.tsx'
+import { NotificationBell } from './NotificationBell.tsx'
 import { NAV } from '../nav.ts'
 import { isAgent, useAuth } from '../auth.tsx'
 import { getHistory, initials, listUrl, recordUrl, timeAgo } from '../util.ts'
@@ -110,10 +111,7 @@ function Header({ title, navOpen, toggleNav }: { title: string; navOpen: boolean
         <button className="sn-icon-btn" title="Help" onClick={() => navigate('/sp/kb')}>
           <Icon name="help" size={20} />
         </button>
-        <button className="sn-icon-btn" title="Notifications">
-          <Icon name="bell" size={20} />
-          <span className="sn-badge">3</span>
-        </button>
+        <NotificationBell />
         <div className="sn-hmenu-wrap">
           <button className="sn-avatar" onClick={() => setMenu(menu === 'user' ? '' : 'user')} title={String(user?.name ?? '')} data-testid="user-menu">
             {initials(String(user?.name ?? '?'))}

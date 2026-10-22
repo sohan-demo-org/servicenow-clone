@@ -6,6 +6,7 @@ import type { JournalEntry, Rec } from '../api.ts'
 import { Icon } from '../components/Icon.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { initials, recordUrl, timeAgo } from '../util.ts'
+import { NotificationBell } from '../components/NotificationBell.tsx'
 
 const CATS = [
   { value: '', label: 'All items' },
@@ -34,6 +35,7 @@ export function PortalLayout() {
           {isAgent(user) && <Link to="/">Agent View</Link>}
         </nav>
         <div className="sp-user">
+          <NotificationBell />
           <span className="sn-avatar sm">{initials(String(user?.name ?? ''))}</span>
           {String(user?.name ?? '')}
           <button

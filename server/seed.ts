@@ -1,6 +1,7 @@
 import { addJournal, insertRecord, nowStr, updateRecord } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { calcPriority } from '../shared/schema.ts'
+import { seedNotifications } from './notifications.ts'
 
 function rng(seed: number) {
   let s = seed >>> 0
@@ -381,6 +382,7 @@ export function seed(db: Db): void {
       )
       db.prepare('UPDATE kb_knowledge SET sys_view_count = ?, rating = ? WHERE sys_id = ?').run(Math.floor(rand() * 900) + 20, Math.floor(rand() * 40), kb.sys_id)
     })
+    seedNotifications(db)
     db.exec('COMMIT')
   } catch (e) {
     db.exec('ROLLBACK')

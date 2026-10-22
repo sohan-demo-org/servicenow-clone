@@ -12,6 +12,7 @@ import {
   updateRecord,
 } from './db.ts'
 import type { Db, Row } from './db.ts'
+import { notificationRoutes, notifyJournal, notifyRecordChange } from './notifications.ts'
 import { TABLES } from '../shared/schema.ts'
 
 interface Actor {
@@ -59,16 +60,24 @@ export function createApp(db: Db) {
   })
 
   app.post('/api/now/table/:table', (req, res) => {
-    res.status(201).json({ result: insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req)) })
+    const actor = actorOf(db, req)
+    const result = insertRecord(db, req.params.table, req.body ?? {}, actor)
+    notifyRecordChange(db, req.params.table, null, result, actor)
+    res.status(201).json({ result })
   })
 
   app.patch('/api/now/table/:table/:id', (req, res) => {
     const actor = actorOf(db, req)
     const { work_notes, comments, ...fields } = req.body ?? {}
+    const prev = getRecord(db, req.params.table, req.params.id)
     const result = updateRecord(db, req.params.table, req.params.id, fields, actor)
+    notifyRecordChange(db, req.params.table, prev, result, actor)
     if (TABLES[req.params.table]?.journal) {
-      if (work_notes) addJournal(db, req.params.table, req.params.id, 'work_notes', String(work_notes), actor)
-      if (comments) addJournal(db, req.params.table, req.params.id, 'comments', String(comments), actor)
+      for (const [element, value] of [['work_notes', work_notes], ['comments', comments]] as const) {
+        if (!value) continue
+        addJournal(db, req.params.table, req.params.id, element, String(value), actor)
+        notifyJournal(db, req.params.table, req.params.id, element, String(value), actor)
+      }
     }
     res.json({ result })
   })
@@ -88,7 +97,9 @@ export function createApp(db: Db) {
     const element = req.body?.element === 'work_notes' ? 'work_notes' : 'comments'
     const value = String(req.body?.value ?? '').trim()
     if (!value) throw new HttpError(400, 'Journal entry cannot be empty')
-    const entry = addJournal(db, req.params.table, req.params.id, element, value, actorOf(db, req))
+    const actor = actorOf(db, req)
+    const entry = addJournal(db, req.params.table, req.params.id, element, value, actor)
+    notifyJournal(db, req.params.table, req.params.id, element, value, actor)
     db.prepare(`UPDATE ${req.params.table} SET sys_updated_on = ? WHERE sys_id = ?`).run(entry.sys_created_on, req.params.id)
     res.status(201).json({ result: entry })
   })
@@ -138,7 +149,9 @@ export function createApp(db: Db) {
     if (table === 'change_request') fields = decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
     else if (table === 'sc_req_item') fields = decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
     else throw new HttpError(400, `Approvals are not supported for ${table}`)
+    const prev = getRecord(db, table, id)
     const result = updateRecord(db, table, id, fields, actor)
+    notifyRecordChange(db, table, prev, result, actor)
     addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
     res.json({ result })
   })
@@ -177,6 +190,8 @@ export function createApp(db: Db) {
       .filter((g) => g.total > 0)
     res.json({ result })
   })
+
+  app.use('/api/now/notifications', notificationRoutes(db, (req) => actorOf(db, req)))
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))
 

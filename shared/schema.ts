@@ -436,6 +436,26 @@ export const TABLES: Record<string, TableDef> = {
       { table: 'change_request', field: 'assignment_group', label: 'Change Requests' },
     ],
   },
+  sys_notification: {
+    name: 'sys_notification',
+    label: 'Notification',
+    plural: 'Notifications',
+    displayField: 'message',
+    defaultSort: 'ORDERBYDESCsys_created_on',
+    fields: [
+      { name: 'recipient', label: 'Recipient', type: 'reference', ref: 'sys_user', mandatory: true },
+      { name: 'type', label: 'Type', type: 'choice', choices: c(['assigned', 'Assigned to me'], ['state_change', 'State change'], ['mention', 'Mention'], ['comment', 'Comment']) },
+      { name: 'source_table', label: 'Table', type: 'string' },
+      { name: 'document_id', label: 'Document', type: 'string' },
+      { name: 'document_number', label: 'Number', type: 'string' },
+      { name: 'message', label: 'Message', type: 'string' },
+      { name: 'actor', label: 'From', type: 'reference', ref: 'sys_user' },
+      { name: 'read', label: 'Read', type: 'boolean' },
+      ...sysFields,
+    ],
+    listFields: ['sys_created_on', 'recipient', 'type', 'document_number', 'message', 'actor', 'read'],
+    form: [{ left: ['recipient', 'type', 'actor', 'read'], right: ['source_table', 'document_number', 'document_id', 'sys_created_on'], full: ['message'] }],
+  },
 }
 
 export function getField(table: string, field: string): FieldDef | undefined {
