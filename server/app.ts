@@ -13,6 +13,8 @@ import {
 } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { TABLES } from '../shared/schema.ts'
+import { defaultLlm, runSkill } from './nowassist.ts'
+import type { LlmFn, Skill } from './nowassist.ts'
 
 interface Actor {
   sys_id: string
@@ -30,7 +32,8 @@ function actorOf(db: Db, req: Request): Actor | null {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
-export function createApp(db: Db) {
+export function createApp(db: Db, opts: { llm?: LlmFn | null } = {}) {
+  const llm = opts.llm === undefined ? defaultLlm() : opts.llm
   const app = express()
   app.use(express.json({ limit: '1mb' }))
 
@@ -151,6 +154,10 @@ export function createApp(db: Db) {
   app.post('/api/now/kb/:id/helpful', (req, res) => {
     db.prepare('UPDATE kb_knowledge SET rating = COALESCE(rating, 0) + 1 WHERE sys_id = ?').run(req.params.id)
     res.json({ result: getRecord(db, 'kb_knowledge', req.params.id) })
+  })
+
+  app.post('/api/now/assist/:skill/:table/:id', async (req, res) => {
+    res.json({ result: await runSkill(db, llm, req.params.skill as Skill, req.params.table, req.params.id) })
   })
 
   app.get('/api/now/search', (req, res) => {

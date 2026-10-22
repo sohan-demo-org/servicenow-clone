@@ -6,6 +6,7 @@ import { ApiError, api } from '../api.ts'
 import type { JournalEntry, Rec } from '../api.ts'
 import { ActivityStream } from '../components/ActivityStream.tsx'
 import { Icon } from '../components/Icon.tsx'
+import { ASSIST_SKILLS, NowAssist } from '../components/NowAssist.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
 import { ReferenceInput } from '../components/ReferenceInput.tsx'
@@ -62,6 +63,7 @@ export function FormPage() {
   const [relTab, setRelTab] = useState(0)
   const [busy, setBusy] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  const [assistOpen, setAssistOpen] = useState(false)
   const agent = isAgent(user)
 
   const title = isNew ? `New ${def?.label ?? ''}` : rec ? `${def?.label} - ${displayValue(table, rec, def.displayField)}` : (def?.label ?? '')
@@ -198,10 +200,35 @@ export function FormPage() {
     }
   }
 
-  const resolve = async () => {
-    const tabs = def.tabs ?? []
-    const resIdx = tabs.findIndex((t) => t.title === 'Resolution Information')
+  const showResolutionTab = () => {
+    const resIdx = (def.tabs ?? []).findIndex((t) => t.title === 'Resolution Information')
     if (resIdx >= 0) setTab(resIdx + (def.journal ? 1 : 0))
+  }
+
+  const applyResolution = (closeCode: string, closeNotes: string) => {
+    setDraft((d) => ({ ...d, close_code: closeCode, close_notes: closeNotes }))
+    setInvalid((prev) => new Set([...prev].filter((f) => f !== 'close_code' && f !== 'close_notes')))
+    showResolutionTab()
+    setMsgs([{ type: 'info', text: 'Now Assist drafted the resolution code and notes. Review them, then click Resolve.' }])
+  }
+
+  const postAssistNote = async (text: string) => {
+    await api.addJournal(table, id, 'work_notes', text)
+    await loadJournal()
+    setTab(0)
+    setMsgs([{ type: 'success', text: 'Now Assist output posted to work notes' }])
+  }
+
+  const createKbFromAssist = async (d: { short_description: string; kb_category: string; text: string }) => {
+    const kb = await api.create('kb_knowledge', { short_description: d.short_description, kb_category: d.kb_category, text: d.text, workflow_state: 'draft', author: user?.sys_id })
+    await api.addJournal(table, id, 'work_notes', `Knowledge article ${String(kb.number)} drafted by Now Assist from this incident.`)
+    await loadJournal()
+    setMsgs([{ type: 'success', text: `Draft knowledge article ${String(kb.number)} created` }])
+    return kb
+  }
+
+  const resolve = async () => {
+    showResolutionTab()
     setDraft((d) => ({ ...d, state: '6' }))
     if (!value('close_code') || !value('close_notes')) {
       setInvalid(new Set(['close_code', 'close_notes'].filter((f) => !value(f))))
@@ -409,6 +436,9 @@ export function FormPage() {
       )
   }
 
+  const assistAvailable = agent && !isNew && Boolean(ASSIST_SKILLS[table])
+  const assistVisible = assistAvailable && assistOpen && rec
+
   return (
     <div className="sn-form-page">
       <div className="sn-titlebar form">
@@ -420,9 +450,18 @@ export function FormPage() {
           <b>{isNew ? 'New record' : displayValue(table, rec as Rec, def.displayField)}</b>
           {changed.length > 0 && !isNew && <span className="sn-dirty">● unsaved changes</span>}
         </div>
-        <div className="sn-titlebar-right">{buttons}</div>
+        <div className="sn-titlebar-right">
+          {assistAvailable && (
+            <button className={`na-toggle ${assistOpen ? 'on' : ''}`} onClick={() => setAssistOpen(!assistOpen)} data-testid="now-assist-toggle" aria-pressed={assistOpen}>
+              <Icon name="sparkle" size={14} /> Now Assist
+            </button>
+          )}
+          {buttons}
+        </div>
       </div>
 
+      <div className={`sn-form-wrap ${assistVisible ? 'with-assist' : ''}`}>
+      <div className="sn-form-main">
       {msgs.map((m, i) => (
         <div key={i} className={`sn-msg ${m.type}`} role="alert" data-testid={`msg-${m.type}`}>
           <span>{m.text}</span>
@@ -494,6 +533,20 @@ export function FormPage() {
           )}
         </div>
       )}
+      </div>
+      {assistVisible && (
+        <NowAssist
+          key={`${table}-${id}`}
+          table={table}
+          id={id}
+          rec={rec}
+          onClose={() => setAssistOpen(false)}
+          onPostWorkNote={postAssistNote}
+          onApplyResolution={applyResolution}
+          onCreateKb={createKbFromAssist}
+        />
+      )}
+      </div>
     </div>
   )
 }
