@@ -9,6 +9,7 @@ import { Icon } from '../components/Icon.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
 import { ReferenceInput } from '../components/ReferenceInput.tsx'
+import { SimilarIncidents } from '../components/SimilarIncidents.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { parseQuery } from '../query.ts'
 import { displayValue, formatDate, fromInputDate, parseDate, pushHistory, recordUrl, toInputDate } from '../util.ts'
@@ -450,6 +451,18 @@ export function FormPage() {
           </div>
         )}
         {def.form.map((s, i) => renderSection(s, i))}
+        {table === 'incident' && rec && agent && (
+          <SimilarIncidents
+            incidentId={id}
+            problemId={String(rec.problem_id ?? '')}
+            onApply={(close_code, close_notes, from) => {
+              setDraft((d) => ({ ...d, close_code, close_notes }))
+              setTab((def.tabs ?? []).findIndex((t) => t.title === 'Resolution Information') + 1)
+              setMsgs([{ type: 'info', text: `Resolution from ${from} copied into Resolution Information (not saved yet) — review, then Resolve or Save.` }])
+            }}
+            onLinkProblem={(p) => save({ stay: true, extra: { problem_id: p.sys_id, work_notes: `Linked to Problem ${p.number} (suggested by Similar Incidents).` }, successMsg: `Linked to Problem ${p.number}` })}
+          />
+        )}
 
         {tabs.length > 0 && (
           <div className="sn-tabs">

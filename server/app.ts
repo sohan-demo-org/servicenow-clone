@@ -13,6 +13,7 @@ import {
 } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { TABLES } from '../shared/schema.ts'
+import { registerSimilarRoutes } from './similar.ts'
 
 interface Actor {
   sys_id: string
@@ -177,6 +178,8 @@ export function createApp(db: Db) {
       .filter((g) => g.total > 0)
     res.json({ result })
   })
+
+  registerSimilarRoutes(app, db, actorOf)
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))
 
