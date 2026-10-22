@@ -438,6 +438,64 @@ export const TABLES: Record<string, TableDef> = {
   },
 }
 
+TABLES.cmn_rota = {
+  name: 'cmn_rota',
+  label: 'On-Call Rota',
+  plural: 'On-Call Rotas',
+  displayField: 'name',
+  defaultSort: 'ORDERBYname',
+  fields: [
+    { name: 'name', label: 'Name', type: 'string', mandatory: true },
+    { name: 'group', label: 'Group', type: 'reference', ref: 'sys_user_group', mandatory: true },
+    { name: 'rotation_type', label: 'Rotation', type: 'choice', choices: c(['daily', 'Daily'], ['weekly', 'Weekly']) },
+    { name: 'handoff_time', label: 'Handoff time (HH:MM)', type: 'string' },
+    { name: 'timezone', label: 'Time zone', type: 'choice', choices: c(['America/Los_Angeles', 'US/Pacific'], ['America/Chicago', 'US/Central'], ['America/New_York', 'US/Eastern'], ['Europe/London', 'Europe/London'], ['Europe/Amsterdam', 'Europe/Amsterdam'], ['UTC', 'UTC']) },
+    { name: 'start_date', label: 'Rotation start', type: 'datetime' },
+    { name: 'active', label: 'Active', type: 'boolean' },
+    ...sysFields,
+  ],
+  listFields: ['name', 'group', 'rotation_type', 'handoff_time', 'timezone', 'start_date', 'active'],
+  form: [{ left: ['name', 'group', 'active'], right: ['rotation_type', 'handoff_time', 'timezone', 'start_date'] }],
+  related: [
+    { table: 'cmn_rota_member', field: 'rota', label: 'Members' },
+    { table: 'cmn_rota_override', field: 'rota', label: 'Overrides' },
+  ],
+}
+
+TABLES.cmn_rota_member = {
+  name: 'cmn_rota_member',
+  label: 'Rota Member',
+  plural: 'Rota Members',
+  displayField: 'member',
+  defaultSort: 'ORDERBYorder',
+  fields: [
+    { name: 'rota', label: 'Rota', type: 'reference', ref: 'cmn_rota', mandatory: true },
+    { name: 'member', label: 'Member', type: 'reference', ref: 'sys_user', mandatory: true, refQuery: 'roleINitil,admin' },
+    { name: 'order', label: 'Order', type: 'integer' },
+    ...sysFields,
+  ],
+  listFields: ['rota', 'member', 'order'],
+  form: [{ left: ['rota', 'member'], right: ['order'] }],
+}
+
+TABLES.cmn_rota_override = {
+  name: 'cmn_rota_override',
+  label: 'Rota Override',
+  plural: 'Rota Overrides',
+  displayField: 'reason',
+  defaultSort: 'ORDERBYDESCstart_date',
+  fields: [
+    { name: 'rota', label: 'Rota', type: 'reference', ref: 'cmn_rota', mandatory: true },
+    { name: 'member', label: 'Covering member', type: 'reference', ref: 'sys_user', mandatory: true, refQuery: 'roleINitil,admin' },
+    { name: 'start_date', label: 'Start', type: 'datetime', mandatory: true },
+    { name: 'end_date', label: 'End', type: 'datetime', mandatory: true },
+    { name: 'reason', label: 'Reason', type: 'string' },
+    ...sysFields,
+  ],
+  listFields: ['rota', 'member', 'start_date', 'end_date', 'reason', 'sys_created_by'],
+  form: [{ left: ['rota', 'member', 'reason'], right: ['start_date', 'end_date'] }],
+}
+
 export function getField(table: string, field: string): FieldDef | undefined {
   return TABLES[table]?.fields.find((f) => f.name === field)
 }

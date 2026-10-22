@@ -13,6 +13,7 @@ import {
 } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { TABLES } from '../shared/schema.ts'
+import { autoAssignOnCall, createOverride, currentOnCall, groupSchedule, parseUtc } from './oncall.ts'
 
 interface Actor {
   sys_id: string
@@ -59,13 +60,17 @@ export function createApp(db: Db) {
   })
 
   app.post('/api/now/table/:table', (req, res) => {
-    res.status(201).json({ result: insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req)) })
+    let result = insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req))
+    if (req.params.table === 'incident') result = autoAssignOnCall(db, result, null)
+    res.status(201).json({ result })
   })
 
   app.patch('/api/now/table/:table/:id', (req, res) => {
     const actor = actorOf(db, req)
     const { work_notes, comments, ...fields } = req.body ?? {}
-    const result = updateRecord(db, req.params.table, req.params.id, fields, actor)
+    const prev = req.params.table === 'incident' ? getRecord(db, 'incident', req.params.id) : null
+    let result = updateRecord(db, req.params.table, req.params.id, fields, actor)
+    if (prev) result = autoAssignOnCall(db, result, prev)
     if (TABLES[req.params.table]?.journal) {
       if (work_notes) addJournal(db, req.params.table, req.params.id, 'work_notes', String(work_notes), actor)
       if (comments) addJournal(db, req.params.table, req.params.id, 'comments', String(comments), actor)
@@ -176,6 +181,20 @@ export function createApp(db: Db) {
       })
       .filter((g) => g.total > 0)
     res.json({ result })
+  })
+
+  app.get('/api/now/oncall/current', (_req, res) => {
+    res.json({ result: currentOnCall(db) })
+  })
+
+  app.get('/api/now/oncall/:groupId/schedule', (req, res) => {
+    const from = str(req.query.from)
+    const fromMs = from ? parseUtc(from) : NaN
+    res.json({ result: groupSchedule(db, req.params.groupId, { days: Number(req.query.days ?? 14) || 14, from: Number.isNaN(fromMs) ? undefined : fromMs }) })
+  })
+
+  app.post('/api/now/oncall/:groupId/override', (req, res) => {
+    res.status(201).json({ result: createOverride(db, req.params.groupId, req.body ?? {}, actorOf(db, req)) })
   })
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))

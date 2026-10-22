@@ -9,6 +9,7 @@ import { Icon } from '../components/Icon.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
 import { ReferenceInput } from '../components/ReferenceInput.tsx'
+import { OnCallHint } from '../oncall/OnCallHint.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { parseQuery } from '../query.ts'
 import { displayValue, formatDate, fromInputDate, parseDate, pushHistory, recordUrl, toInputDate } from '../util.ts'
@@ -290,7 +291,10 @@ export function FormPage() {
           {mandatory && <span className={`sn-mand ${v ? 'filled' : ''}`}>*</span>}
           {f.label}
         </label>
-        <div className="sn-field-input">{input}</div>
+        <div className="sn-field-input">
+          {input}
+          {table === 'incident' && name === 'assignment_group' && v && <OnCallHint groupId={v} />}
+        </div>
       </div>
     )
   }
