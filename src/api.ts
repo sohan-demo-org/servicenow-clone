@@ -32,7 +32,7 @@ export function setApiUser(id: string | null) {
   currentUserId = id
 }
 
-async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
+export async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (currentUserId) headers['X-User'] = currentUserId

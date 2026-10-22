@@ -90,6 +90,16 @@ export const NAV: NavApp[] = [
     ],
   },
   {
+    label: 'On-Call Scheduling',
+    agentOnly: true,
+    modules: [
+      { label: 'On-Call Schedule', to: '/oncall' },
+      { label: 'Rotas', to: listUrl('cmn_rota', '') },
+      { label: 'Rota Members', to: listUrl('cmn_rota_member', '') },
+      { label: 'Overrides', to: listUrl('cmn_rota_override', '') },
+    ],
+  },
+  {
     label: 'User Administration',
     agentOnly: true,
     modules: [

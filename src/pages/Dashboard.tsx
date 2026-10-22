@@ -6,6 +6,7 @@ import { usePageTitle } from '../components/Layout.tsx'
 import { Cell } from '../components/ListTable.tsx'
 import { listUrl, parseDate, recordUrl } from '../util.ts'
 import { useAuth } from '../auth.tsx'
+import { OnCallWidget } from '../oncall/OnCallWidget.tsx'
 
 const ACTIVE = 'stateNOTIN6,7,8'
 const COLORS = ['#e8443b', '#f5a623', '#f8d24a', '#5aa1e3', '#81b5a1', '#9b8ae0', '#7d8b99', '#3ec1c9']
@@ -223,6 +224,7 @@ export function Dashboard() {
           <h3>Change Requests by State</h3>
           <HBars data={changes} onClick={drill('change_request', 'state')} />
         </section>
+        <OnCallWidget />
         <section className="sn-widget wide">
           <h3>
             Critical &amp; High Priority Open Incidents
