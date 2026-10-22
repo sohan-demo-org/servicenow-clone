@@ -5,6 +5,7 @@ import type { FieldDef, FormSection } from '../../shared/schema.ts'
 import { ApiError, api } from '../api.ts'
 import type { JournalEntry, Rec } from '../api.ts'
 import { ActivityStream } from '../components/ActivityStream.tsx'
+import { ApproversSection } from '../components/ApproversSection.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
@@ -226,13 +227,14 @@ export function FormPage() {
     navigate(recordUrl('problem', p.sys_id))
   }
 
-  const approve = async (decision: 'approved' | 'rejected') => {
-    const r = await api.approve(table, id, decision)
+  const onApprovalDecided = async (doc: Rec, decision: 'approved' | 'rejected') => {
+    const r = doc.approval === decision ? await api.get(table, id) : rec
+    if (!r) return
     setRec(r)
     setDraft({})
     setDv(r._dv ?? {})
     await loadJournal()
-    setMsgs([{ type: 'success', text: `${def.label} ${String(r.number)} ${decision}` }])
+    setMsgs([{ type: 'success', text: r.approval === decision ? `${def.label} ${String(r.number)} ${decision}` : `Your ${decision === 'approved' ? 'approval' : 'rejection'} was recorded` }])
   }
 
   const del = async () => {
@@ -246,7 +248,6 @@ export function FormPage() {
   if (!isNew && !rec) return <div className="sn-loading">Loading…</div>
 
   const state = value('state')
-  const approval = value('approval')
 
   const renderField = (name: string, full = false) => {
     const f = getField(table, name)
@@ -378,16 +379,6 @@ export function FormPage() {
           </button>,
         )
     }
-    if ((table === 'change_request' || table === 'sc_req_item') && approval === 'requested' && agent) {
-      buttons.push(
-        <button key="approve" className="sn-btn success" onClick={() => approve('approved')} data-testid="form-approve">
-          Approve
-        </button>,
-        <button key="reject" className="sn-btn danger-outline" onClick={() => approve('rejected')}>
-          Reject
-        </button>,
-      )
-    }
     if (table === 'kb_knowledge') {
       if (rec?.workflow_state !== 'published')
         buttons.push(
@@ -474,6 +465,10 @@ export function FormPage() {
           </div>
         )}
       </div>
+
+      {!isNew && (table === 'change_request' || table === 'sc_req_item') && (
+        <ApproversSection table={table} id={id} version={`${String(rec?.approval)}|${String(rec?.sys_updated_on)}`} onDecided={onApprovalDecided} />
+      )}
 
       {!isNew && def.related && def.related.length > 0 && (
         <div className="sn-related">

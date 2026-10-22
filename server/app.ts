@@ -13,6 +13,7 @@ import {
 } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { TABLES } from '../shared/schema.ts'
+import { approvalRouter, decideForDocument, syncApprovals } from './approvals.ts'
 
 interface Actor {
   sys_id: string
@@ -59,7 +60,10 @@ export function createApp(db: Db) {
   })
 
   app.post('/api/now/table/:table', (req, res) => {
-    res.status(201).json({ result: insertRecord(db, req.params.table, req.body ?? {}, actorOf(db, req)) })
+    const actor = actorOf(db, req)
+    const created = insertRecord(db, req.params.table, req.body ?? {}, actor)
+    syncApprovals(db, req.params.table, String(created.sys_id), actor)
+    res.status(201).json({ result: created })
   })
 
   app.patch('/api/now/table/:table/:id', (req, res) => {
@@ -70,6 +74,7 @@ export function createApp(db: Db) {
       if (work_notes) addJournal(db, req.params.table, req.params.id, 'work_notes', String(work_notes), actor)
       if (comments) addJournal(db, req.params.table, req.params.id, 'comments', String(comments), actor)
     }
+    syncApprovals(db, req.params.table, req.params.id, actor)
     res.json({ result })
   })
 
@@ -127,21 +132,17 @@ export function createApp(db: Db) {
       actor,
     )
     addJournal(db, 'sc_req_item', String(ritm.sys_id), 'comments', `Request submitted for ${quantity} x ${item.name}.`, actor)
+    syncApprovals(db, 'sc_req_item', String(ritm.sys_id), actor)
     res.status(201).json({ result: ritm })
   })
 
   app.post('/api/now/approval/:table/:id', (req, res) => {
-    const actor = actorOf(db, req)
     const decision = req.body?.decision === 'rejected' ? 'rejected' : 'approved'
-    const { table, id } = req.params
-    let fields: Record<string, string>
-    if (table === 'change_request') fields = decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
-    else if (table === 'sc_req_item') fields = decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
-    else throw new HttpError(400, `Approvals are not supported for ${table}`)
-    const result = updateRecord(db, table, id, fields, actor)
-    addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
-    res.json({ result })
+    const out = decideForDocument(db, req.params.table, req.params.id, decision, String(req.body?.comment ?? ''), actorOf(db, req))
+    res.json({ result: out.document })
   })
+
+  app.use(approvalRouter(db, (req) => actorOf(db, req)))
 
   app.post('/api/now/kb/:id/view', (req, res) => {
     db.prepare('UPDATE kb_knowledge SET sys_view_count = COALESCE(sys_view_count, 0) + 1 WHERE sys_id = ?').run(req.params.id)
