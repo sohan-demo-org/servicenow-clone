@@ -438,6 +438,38 @@ export const TABLES: Record<string, TableDef> = {
   },
 }
 
+export const APPROVER_STATE = c(['requested', 'Requested'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['cancelled', 'No Longer Required'])
+
+TABLES.sysapproval_approver = {
+  name: 'sysapproval_approver',
+  label: 'Approval',
+  plural: 'Approvals',
+  displayField: 'document_number',
+  defaultSort: 'ORDERBYDESCsys_created_on',
+  fields: [
+    { name: 'approver', label: 'Approver', type: 'reference', ref: 'sys_user', readOnly: true },
+    { name: 'state', label: 'State', type: 'choice', choices: APPROVER_STATE, readOnly: true },
+    { name: 'source_table', label: 'Source table', type: 'choice', choices: c(['change_request', 'Change Request'], ['sc_req_item', 'Requested Item']), readOnly: true },
+    { name: 'document_id', label: 'Document ID', type: 'string', readOnly: true },
+    { name: 'document_number', label: 'Approval for', type: 'string', readOnly: true },
+    { name: 'short_description', label: 'Short description', type: 'string', readOnly: true },
+    { name: 'requested_by', label: 'Requested by', type: 'reference', ref: 'sys_user', readOnly: true },
+    { name: 'iteration', label: 'Approval round', type: 'integer', readOnly: true },
+    { name: 'due_date', label: 'Due date', type: 'datetime', readOnly: true },
+    { name: 'decided_on', label: 'Decided on', type: 'datetime', readOnly: true },
+    { name: 'comments', label: 'Comments', type: 'text', readOnly: true },
+    ...sysFields,
+  ],
+  listFields: ['document_number', 'short_description', 'source_table', 'approver', 'state', 'requested_by', 'due_date', 'sys_created_on'],
+  form: [
+    {
+      left: ['document_number', 'source_table', 'approver', 'state'],
+      right: ['requested_by', 'due_date', 'decided_on', 'iteration'],
+      full: ['short_description', 'comments'],
+    },
+  ],
+}
+
 export function getField(table: string, field: string): FieldDef | undefined {
   return TABLES[table]?.fields.find((f) => f.name === field)
 }

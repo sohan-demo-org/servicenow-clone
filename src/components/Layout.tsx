@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './Icon.tsx'
 import { NAV } from '../nav.ts'
+import { useApprovalCount } from '../approvals.ts'
 import { isAgent, useAuth } from '../auth.tsx'
 import { getHistory, initials, listUrl, recordUrl, timeAgo } from '../util.ts'
 import { api } from '../api.ts'
@@ -110,6 +111,7 @@ function Header({ title, navOpen, toggleNav }: { title: string; navOpen: boolean
         <button className="sn-icon-btn" title="Help" onClick={() => navigate('/sp/kb')}>
           <Icon name="help" size={20} />
         </button>
+        <ApprovalsIndicator />
         <button className="sn-icon-btn" title="Notifications">
           <Icon name="bell" size={20} />
           <span className="sn-badge">3</span>
@@ -172,6 +174,28 @@ function Header({ title, navOpen, toggleNav }: { title: string; navOpen: boolean
   )
 }
 
+function ApprovalsBadge() {
+  const { user } = useAuth()
+  const n = useApprovalCount(user?.sys_id)
+  return n > 0 ? (
+    <span className="sn-appr-count" data-testid="nav-approvals-badge">
+      {n}
+    </span>
+  ) : null
+}
+
+function ApprovalsIndicator() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const n = useApprovalCount(user?.sys_id)
+  return (
+    <button className="sn-icon-btn" title={`My Approvals (${n} pending)`} onClick={() => navigate('/approvals')} data-testid="header-approvals">
+      <Icon name="check" size={20} />
+      {n > 0 && <span className="sn-badge appr">{n}</span>}
+    </button>
+  )
+}
+
 function Navigator() {
   const { user } = useAuth()
   const [filter, setFilter] = useState('')
@@ -210,6 +234,7 @@ function Navigator() {
                 a.modules.map((m) => (
                   <NavLink key={m.label} to={m.to} className={() => `sn-nav-module ${current === m.to ? 'active' : ''}`}>
                     {m.label}
+                    {m.badge === 'approvals' && <ApprovalsBadge />}
                   </NavLink>
                 ))}
             </div>

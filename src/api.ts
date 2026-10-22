@@ -31,6 +31,7 @@ let currentUserId: string | null = null
 export function setApiUser(id: string | null) {
   currentUserId = id
 }
+export const getApiUser = () => currentUserId
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }

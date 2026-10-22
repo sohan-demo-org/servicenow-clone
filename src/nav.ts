@@ -3,6 +3,7 @@ import { listUrl, recordUrl } from './util.ts'
 export interface NavModule {
   label: string
   to: string
+  badge?: 'approvals'
 }
 
 export interface NavApp {
@@ -21,6 +22,7 @@ export const NAV: NavApp[] = [
       { label: 'Service Portal', to: '/sp' },
       { label: 'My Incidents', to: listUrl('incident', `caller_id=${ME}`) },
       { label: 'My Requests', to: listUrl('sc_req_item', `requested_for=${ME}`) },
+      { label: 'My Approvals', to: '/approvals', badge: 'approvals' },
       { label: 'Knowledge', to: '/sp/kb' },
     ],
   },
