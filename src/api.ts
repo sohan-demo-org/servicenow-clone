@@ -19,6 +19,44 @@ export interface StatRow {
   count: number
 }
 
+export interface AssistSource {
+  table: 'kb_knowledge' | 'incident'
+  sys_id: string
+  number: string
+  title: string
+  score: number
+}
+export interface AssistSummary {
+  headline: string
+  summary: string
+  sentiment: 'frustrated' | 'neutral' | 'satisfied'
+  timeline: { when: string; who: string; what: string }[]
+  next_steps: string[]
+}
+export interface AssistResolve {
+  confidence: number
+  rationale: string
+  steps: string[]
+  close_code: string
+  close_notes: string
+  sources: AssistSource[]
+}
+export interface AssistKbDraft {
+  short_description: string
+  kb_category: string
+  text: string
+  sources: AssistSource[]
+}
+export type AssistSkill = 'summarize' | 'resolve' | 'kb_draft'
+export interface AssistResult<T> {
+  skill: AssistSkill
+  provider: string
+  model: string
+  latency_ms: number
+  fallback_reason?: string
+  output: T
+}
+
 export class ApiError extends Error {
   detail: string
   constructor(message: string, detail: string) {
@@ -71,6 +109,7 @@ export const api = {
     req<{ result: Rec }>('POST', `/api/now/approval/${table}/${id}`, { decision, comment }).then((r) => r.result),
   kbView: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/view`).then((r) => r.result),
   kbHelpful: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/helpful`).then((r) => r.result),
+  assist: <T,>(skill: AssistSkill, table: string, id: string) => req<{ result: AssistResult<T> }>('POST', `/api/now/assist/${skill}/${table}/${id}`).then((r) => r.result),
   search: (q: string) =>
     req<{ result: { table: string; label: string; total: number; records: Rec[] }[] }>('GET', `/api/now/search?q=${encodeURIComponent(q)}`).then((r) => r.result),
 }
