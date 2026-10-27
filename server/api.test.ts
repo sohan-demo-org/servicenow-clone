@@ -10,10 +10,10 @@ let server: Server
 let base = ''
 let adminId = ''
 
-async function call(method: string, path: string, body?: unknown) {
+async function call(method: string, path: string, body?: unknown, as = adminId) {
   const res = await fetch(base + path, {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-User': adminId },
+    headers: { 'Content-Type': 'application/json', 'X-User': as },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   // oxlint-disable-next-line typescript/no-explicit-any
@@ -100,5 +100,94 @@ describe('Table API', () => {
     const search = await call('GET', '/api/now/search?q=vpn')
     assert.ok(search.json.result.some((g: { table: string }) => g.table === 'incident'))
     assert.ok(search.json.result.some((g: { table: string }) => g.table === 'kb_knowledge'))
+  })
+})
+
+describe('Table API write policy', () => {
+  const userId = async (name: string) => (await call('GET', `/api/now/table/sys_user?sysparm_query=user_name=${name}`)).json.result[0].sys_id as string
+  const pendingRitm = async () => {
+    const laptop = (await call('GET', '/api/now/table/sc_cat_item?sysparm_query=name=Developer Laptop')).json.result[0]
+    return (await call('POST', `/api/now/catalog/${laptop.sys_id}/order`, { quantity: 1 })).json.result
+  }
+
+  it('rejects a self-service user granting themselves admin', async () => {
+    const abel = await userId('abel.tuter')
+    const r = await call('PATCH', `/api/now/table/sys_user/${abel}`, { role: 'admin' }, abel)
+    assert.equal(r.status, 403)
+    assert.equal((await call('GET', `/api/now/table/sys_user/${abel}`)).json.result.role, 'user')
+    const ok = await call('PATCH', `/api/now/table/sys_user/${abel}`, { title: 'Analyst', role: 'user' }, abel)
+    assert.equal(ok.status, 200)
+  })
+
+  it('only lets admins set role or active, including on insert', async () => {
+    const beth = await userId('beth.anglin')
+    const created = await call('POST', '/api/now/table/sys_user', { user_name: 'mallory', name: 'Mallory', role: 'admin' }, beth)
+    assert.equal(created.status, 403)
+    const plain = await call('POST', '/api/now/table/sys_user', { user_name: 'mallory', name: 'Mallory' }, beth)
+    assert.equal(plain.json.result.role, 'user')
+    assert.equal((await call('PATCH', `/api/now/table/sys_user/${plain.json.result.sys_id}`, { active: 'false' }, beth)).status, 403)
+    assert.equal((await call('PATCH', `/api/now/table/sys_user/${plain.json.result.sys_id}`, { user_name: 'mallory', role: 'itil' }, '')).status, 403)
+    const promoted = await call('PATCH', `/api/now/table/sys_user/${plain.json.result.sys_id}`, { role: 'itil' })
+    assert.equal(promoted.json.result.role, 'itil')
+  })
+
+  it('ignores approval and price writes on a requested item and blocks stage changes until approved', async () => {
+    const ritm = await pendingRitm()
+    const abel = await userId('abel.tuter')
+    const r = await call('PATCH', `/api/now/table/sc_req_item/${ritm.sys_id}`, { approval: 'approved', price: 1 }, abel)
+    assert.equal(r.status, 200)
+    assert.equal(r.json.result.approval, 'requested')
+    assert.equal(r.json.result.price, ritm.price)
+    const staged = await call('PATCH', `/api/now/table/sc_req_item/${ritm.sys_id}`, { approval: 'approved', stage: 'fulfillment' }, abel)
+    assert.equal(staged.status, 403)
+    const fresh = (await call('GET', `/api/now/table/sc_req_item/${ritm.sys_id}`)).json.result
+    assert.equal(fresh.approval, 'requested')
+    assert.equal(fresh.stage, 'waiting_for_approval')
+    assert.equal((await call('POST', `/api/now/approval/sc_req_item/${ritm.sys_id}`, { decision: 'approved' }, abel)).status, 403)
+    assert.equal((await call('POST', `/api/now/approval/sc_req_item/${ritm.sys_id}`, { decision: 'approved' })).json.result.stage, 'fulfillment')
+    assert.equal((await call('PATCH', `/api/now/table/sc_req_item/${ritm.sys_id}`, { stage: 'delivery' })).json.result.stage, 'delivery')
+    assert.equal((await call('POST', `/api/now/approval/sc_req_item/${ritm.sys_id}`, { decision: 'approved' })).status, 400)
+  })
+
+  it('derives approval, stage and price server-side for generic requested-item inserts', async () => {
+    const laptop = (await call('GET', '/api/now/table/sc_cat_item?sysparm_query=name=Developer Laptop')).json.result[0]
+    const r = await call('POST', '/api/now/table/sc_req_item', { cat_item: laptop.sys_id, requested_for: adminId, quantity: 2, price: 1, approval: 'approved', stage: 'fulfillment', state: '2' })
+    assert.equal(r.status, 201)
+    assert.equal(r.json.result.price, laptop.price * 2)
+    assert.equal(r.json.result.approval, 'requested')
+    assert.equal(r.json.result.stage, 'waiting_for_approval')
+    assert.equal(r.json.result.state, '1')
+  })
+
+  it('keeps change approval server-controlled and blocks scheduling an unapproved change', async () => {
+    const chg = (await call('POST', '/api/now/table/change_request', { short_description: 'Patch DB', requested_by: adminId, approval: 'approved' })).json.result
+    assert.equal(chg.approval, 'not requested')
+    assert.equal((await call('PATCH', `/api/now/table/change_request/${chg.sys_id}`, { approval: 'approved', state: '-2' })).status, 403)
+    assert.equal((await call('POST', '/api/now/table/change_request', { short_description: 'Skip CAB', requested_by: adminId, state: '-1' })).status, 403)
+    const requested = await call('PATCH', `/api/now/table/change_request/${chg.sys_id}`, { state: '-3' })
+    assert.equal(requested.json.result.approval, 'requested')
+    assert.equal((await call('POST', `/api/now/approval/change_request/${chg.sys_id}`, { decision: 'approved' })).json.result.state, '-2')
+    assert.equal((await call('PATCH', `/api/now/table/change_request/${chg.sys_id}`, { state: '-1' })).json.result.state, '-1')
+  })
+
+  it('ignores client-supplied sys_id and timestamps', async () => {
+    const caller = await userId('abel.tuter')
+    const r = await call('POST', '/api/now/table/incident', {
+      caller_id: caller,
+      short_description: 'Backdated',
+      sys_id: 'attacker-chosen-id',
+      sys_created_on: '2000-01-01 00:00:00',
+      sys_updated_on: '2000-01-01 00:00:00',
+      opened_at: '2000-01-01 00:00:00',
+      resolved_at: '2000-01-02 00:00:00',
+    })
+    assert.equal(r.status, 201)
+    const inc = r.json.result
+    assert.notEqual(inc.sys_id, 'attacker-chosen-id')
+    for (const k of ['sys_created_on', 'sys_updated_on', 'opened_at']) assert.ok(!String(inc[k]).startsWith('2000'), k)
+    assert.equal(inc.resolved_at, null)
+    const patched = await call('PATCH', `/api/now/table/incident/${inc.sys_id}`, { opened_at: '2000-01-01 00:00:00', resolved_at: '2000-01-02 00:00:00' })
+    assert.equal(patched.json.result.opened_at, inc.opened_at)
+    assert.equal(patched.json.result.resolved_at, null)
   })
 })

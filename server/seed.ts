@@ -1,6 +1,8 @@
-import { addJournal, insertRecord, nowStr, updateRecord } from './db.ts'
+import { addJournal, insertRecord as insertRaw, nowStr, updateRecord } from './db.ts'
 import type { Db, Row } from './db.ts'
 import { calcPriority } from '../shared/schema.ts'
+
+const insertRecord = (...[db, table, body, actor, opts]: Parameters<typeof insertRaw>) => insertRaw(db, table, body, actor, { ...opts, trusted: true })
 
 function rng(seed: number) {
   let s = seed >>> 0

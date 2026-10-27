@@ -233,6 +233,55 @@ interface Actor {
   sys_id: string
   user_name: string
   name: string
+  role?: string
+}
+
+export interface WriteOptions {
+  /** Internal callers only (seed data, approval and catalog order endpoints). HTTP table routes never set it. */
+  trusted?: boolean
+}
+
+export const APPROVAL_THRESHOLD = 1000
+
+const ADMIN_ONLY_FIELDS: Record<string, string[]> = { sys_user: ['role', 'active'] }
+const INSERT_DEFAULTS: Record<string, Row> = { sys_user: { role: 'user', active: 'true' } }
+const RITM_APPROVAL_STAGES = new Set(['waiting_for_approval', 'request_approved'])
+const CHANGE_POST_APPROVAL_STATES = new Set(['-2', '-1', '0', '3'])
+
+function restricted(detail: string): never {
+  throw new HttpError(403, 'Security restricted', detail)
+}
+
+function stripSystemFields(t: TableDef, rec: Row): void {
+  for (const f of t.fields) if (f.readOnly) delete rec[f.name]
+}
+
+function enforceWritePolicy(t: TableDef, rec: Row, prev: Row | null, actor: Actor | null): void {
+  const before = prev ?? INSERT_DEFAULTS[t.name] ?? {}
+  const changed = (k: string) => k in rec && String(rec[k] ?? '') !== String(before[k] ?? '')
+  const label = (k: string) => getField(t.name, k)?.label ?? k
+  if (actor?.role !== 'admin') {
+    for (const k of ADMIN_ONLY_FIELDS[t.name] ?? []) if (changed(k)) restricted(`Only administrators can set ${label(k)} on ${t.label}`)
+  }
+  if (t.name === 'change_request' && changed('state') && CHANGE_POST_APPROVAL_STATES.has(String(rec.state))) {
+    const approval = 'approval' in rec ? rec.approval : prev?.approval
+    if (approval !== 'approved') restricted(`Change must be approved before it can move to ${choiceLabel(t.name, 'state', String(rec.state))}`)
+  }
+  if (t.name === 'sc_req_item' && prev) {
+    if (changed('stage') && RITM_APPROVAL_STAGES.has(String(rec.stage))) restricted(`${choiceLabel(t.name, 'stage', String(rec.stage))} is set by the approval workflow`)
+    if (prev.approval !== 'approved' && (changed('stage') || changed('state'))) restricted('Requested item must be approved before its stage or state can change')
+  }
+}
+
+function ritmInsertDefaults(db: Db, rec: Row): void {
+  const item = rec.cat_item ? (db.prepare('SELECT price FROM sc_cat_item WHERE sys_id = ?').get(rec.cat_item) as { price: number | null } | undefined) : undefined
+  const quantity = Math.max(1, Number(rec.quantity) || 1)
+  rec.quantity = quantity
+  rec.price = Number(item?.price ?? 0) * quantity
+  const needsApproval = Number(rec.price) >= APPROVAL_THRESHOLD
+  rec.approval = needsApproval ? 'requested' : 'approved'
+  rec.stage = needsApproval ? 'waiting_for_approval' : 'request_approved'
+  rec.state = '1'
 }
 
 function applyBusinessRules(table: string, rec: Row, prev: Row | null): void {
@@ -286,38 +335,51 @@ function applyBusinessRules(table: string, rec: Row, prev: Row | null): void {
   }
 }
 
-export function insertRecord(db: Db, table: string, body: Record<string, unknown>, actor: Actor | null, opts: { skipRules?: boolean } = {}): Row {
+export function insertRecord(db: Db, table: string, body: Record<string, unknown>, actor: Actor | null, opts: WriteOptions & { skipRules?: boolean } = {}): Row {
   const t = tableDef(table)
+  const trusted = opts.trusted === true
   const rec = clean(t, body)
+  if (!trusted) {
+    stripSystemFields(t, rec)
+    if (table === 'sc_req_item') ritmInsertDefaults(db, rec)
+  }
   for (const f of t.fields) {
     if (f.mandatory && (rec[f.name] == null || rec[f.name] === '')) {
       throw new HttpError(400, 'Mandatory fields missing', `${f.label} is mandatory`)
     }
   }
   if (!opts.skipRules) applyBusinessRules(table, rec, null)
+  if (!trusted) enforceWritePolicy(t, rec, null, actor)
   if (t.prefix && !rec.number) rec.number = nextNumber(db, t.prefix)
-  const now = typeof body.sys_created_on === 'string' ? body.sys_created_on : nowStr()
-  const id = typeof body.sys_id === 'string' ? body.sys_id : sysId()
+  const given = (k: string) => (trusted && typeof body[k] === 'string' ? (body[k] as string) : undefined)
+  const now = given('sys_created_on') ?? nowStr()
+  const id = given('sys_id') ?? sysId()
   const by = actor?.user_name ?? 'system'
-  const full: Row = { ...rec, sys_id: id, sys_created_on: now, sys_updated_on: (body.sys_updated_on as string) ?? now, sys_created_by: by, sys_updated_by: by }
-  if (table === 'incident' && typeof body.opened_at === 'string') full.opened_at = body.opened_at
-  if (table === 'incident' && typeof body.resolved_at === 'string') full.resolved_at = body.resolved_at
+  const full: Row = { ...rec, sys_id: id, sys_created_on: now, sys_updated_on: given('sys_updated_on') ?? now, sys_created_by: by, sys_updated_by: by }
+  if (table === 'incident') {
+    const openedAt = given('opened_at')
+    const resolvedAt = given('resolved_at')
+    if (openedAt) full.opened_at = openedAt
+    if (resolvedAt) full.resolved_at = resolvedAt
+  }
   const keys = Object.keys(full)
   db.prepare(`INSERT INTO ${t.name} (${keys.map((k) => `"${k}"`).join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...keys.map((k) => full[k]))
   return getRecord(db, table, id)
 }
 
-export function updateRecord(db: Db, table: string, id: string, body: Record<string, unknown>, actor: Actor | null): Row {
+export function updateRecord(db: Db, table: string, id: string, body: Record<string, unknown>, actor: Actor | null, opts: WriteOptions = {}): Row {
   const t = tableDef(table)
   const prev = db.prepare(`SELECT * FROM ${t.name} WHERE sys_id = ?`).get(id) as Row | undefined
   if (!prev) throw new HttpError(404, 'No Record found', `Record ${id} does not exist in ${table}`)
   const rec = clean(t, body)
+  if (!opts.trusted) stripSystemFields(t, rec)
   for (const f of t.fields) {
     if (f.mandatory && f.name in rec && (rec[f.name] == null || rec[f.name] === '')) {
       throw new HttpError(400, 'Mandatory fields missing', `${f.label} is mandatory`)
     }
   }
   applyBusinessRules(table, rec, prev)
+  if (!opts.trusted) enforceWritePolicy(t, rec, prev, actor)
   const changes = Object.keys(rec).filter((k) => String(rec[k] ?? '') !== String(prev[k] ?? ''))
   if (changes.length) {
     const now = nowStr()

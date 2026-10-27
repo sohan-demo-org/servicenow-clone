@@ -300,7 +300,7 @@ export const TABLES: Record<string, TableDef> = {
       { name: 'price', label: 'Price', type: 'currency', readOnly: true },
       { name: 'stage', label: 'Stage', type: 'choice', choices: RITM_STAGE },
       { name: 'state', label: 'State', type: 'choice', choices: RITM_STATE },
-      { name: 'approval', label: 'Approval', type: 'choice', choices: APPROVAL },
+      { name: 'approval', label: 'Approval', type: 'choice', choices: APPROVAL, readOnly: true },
       { name: 'assignment_group', label: 'Assignment group', type: 'reference', ref: 'sys_user_group' },
       { name: 'assigned_to', label: 'Assigned to', type: 'reference', ref: 'sys_user', refQuery: 'roleINitil,admin' },
       { name: 'short_description', label: 'Short description', type: 'string' },
