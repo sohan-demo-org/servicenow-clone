@@ -1,6 +1,7 @@
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import {
+  APPROVAL_THRESHOLD,
   HttpError,
   addJournal,
   deleteRecord,
@@ -104,7 +105,7 @@ export function createApp(db: Db) {
     const item = getRecord(db, 'sc_cat_item', req.params.itemId)
     const quantity = Math.max(1, Math.min(10, Number(req.body?.quantity ?? 1) || 1))
     const price = Number(item.price ?? 0) * quantity
-    const needsApproval = price >= 1000
+    const needsApproval = price >= APPROVAL_THRESHOLD
     const variables = req.body?.variables && typeof req.body.variables === 'object' ? req.body.variables : {}
     const ritm = insertRecord(
       db,
@@ -125,6 +126,7 @@ export function createApp(db: Db) {
           .join('\n'),
       },
       actor,
+      { trusted: true },
     )
     addJournal(db, 'sc_req_item', String(ritm.sys_id), 'comments', `Request submitted for ${quantity} x ${item.name}.`, actor)
     res.status(201).json({ result: ritm })
@@ -134,11 +136,13 @@ export function createApp(db: Db) {
     const actor = actorOf(db, req)
     const decision = req.body?.decision === 'rejected' ? 'rejected' : 'approved'
     const { table, id } = req.params
+    if (actor?.role !== 'admin' && actor?.role !== 'itil') throw new HttpError(403, 'Security restricted', 'Only agents can approve or reject requests')
     let fields: Record<string, string>
     if (table === 'change_request') fields = decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
     else if (table === 'sc_req_item') fields = decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
     else throw new HttpError(400, `Approvals are not supported for ${table}`)
-    const result = updateRecord(db, table, id, fields, actor)
+    if (getRecord(db, table, id).approval !== 'requested') throw new HttpError(400, 'Approval is not pending for this record')
+    const result = updateRecord(db, table, id, fields, actor, { trusted: true })
     addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
     res.json({ result })
   })
