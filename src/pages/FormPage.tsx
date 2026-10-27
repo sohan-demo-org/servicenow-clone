@@ -152,6 +152,11 @@ export function FormPage() {
   const missingMandatory = (extra: string[] = []): FieldDef[] =>
     def.fields.filter((f) => (f.mandatory || extra.includes(f.name)) && !f.readOnly && !value(f.name))
 
+  const showError = (e: unknown, prefix = '') => {
+    const err = e as ApiError
+    setMsgs([{ type: 'error', text: `${prefix}${err.message}${err.detail ? `: ${err.detail}` : ''}` }])
+  }
+
   const save = async (opts: { stay?: boolean; extra?: Draft; requireFields?: string[]; successMsg?: string } = {}): Promise<Rec | null> => {
     const extraKeys = Object.keys(opts.extra ?? {})
     const merged: Draft = { ...draft, ...(opts.extra ?? {}) }
@@ -190,8 +195,7 @@ export function FormPage() {
       }
       return result
     } catch (e) {
-      const err = e as ApiError
-      setMsgs([{ type: 'error', text: `${err.message}${err.detail ? `: ${err.detail}` : ''}` }])
+      showError(e)
       return null
     } finally {
       setBusy(false)
@@ -213,32 +217,45 @@ export function FormPage() {
 
   const createProblem = async () => {
     if (!rec) return
-    const p = await api.create('problem', {
-      short_description: rec.short_description,
-      description: rec.description,
-      category: rec.category,
-      cmdb_ci: rec.cmdb_ci,
-      impact: rec.impact,
-      urgency: rec.urgency,
-      assignment_group: rec.assignment_group,
-    })
-    await api.update('incident', id, { problem_id: p.sys_id, work_notes: `Problem ${p.number} created from this incident.` })
-    navigate(recordUrl('problem', p.sys_id))
+    let p: Rec | null = null
+    try {
+      p = await api.create('problem', {
+        short_description: rec.short_description,
+        description: rec.description,
+        category: rec.category,
+        cmdb_ci: rec.cmdb_ci,
+        impact: rec.impact,
+        urgency: rec.urgency,
+        assignment_group: rec.assignment_group,
+      })
+      await api.update('incident', id, { problem_id: p.sys_id, work_notes: `Problem ${p.number} created from this incident.` })
+      navigate(recordUrl('problem', p.sys_id))
+    } catch (e) {
+      showError(e, p ? `Problem ${p.number} was created but could not be linked to this incident: ` : '')
+    }
   }
 
   const approve = async (decision: 'approved' | 'rejected') => {
-    const r = await api.approve(table, id, decision)
-    setRec(r)
-    setDraft({})
-    setDv(r._dv ?? {})
-    await loadJournal()
-    setMsgs([{ type: 'success', text: `${def.label} ${String(r.number)} ${decision}` }])
+    try {
+      const r = await api.approve(table, id, decision)
+      setRec(r)
+      setDraft({})
+      setDv(r._dv ?? {})
+      await loadJournal()
+      setMsgs([{ type: 'success', text: `${def.label} ${String(r.number)} ${decision}` }])
+    } catch (e) {
+      showError(e)
+    }
   }
 
   const del = async () => {
     if (!confirm(`Delete this ${def.label}?`)) return
-    await api.remove(table, id)
-    navigate(`/list/${table}`)
+    try {
+      await api.remove(table, id)
+      navigate(`/list/${table}`)
+    } catch (e) {
+      showError(e)
+    }
   }
 
   if (!def) return <div className="sn-page-pad">Unknown table “{table}”.</div>
