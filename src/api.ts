@@ -7,7 +7,7 @@ export interface ListResult {
 
 export interface JournalEntry {
   sys_id: string
-  element: 'work_notes' | 'comments' | 'audit'
+  element: 'work_notes' | 'comments' | 'audit' | 'comms'
   value: string
   sys_created_by: string
   sys_created_on: string
@@ -17,6 +17,23 @@ export interface StatRow {
   value: string
   label: string
   count: number
+}
+
+export type MajorIncident = Rec & {
+  _children: number
+  _open_children: number
+  _affected_users: number
+  _comms: number
+  _next_update_due: string | null
+}
+
+export type TimelineEntry = JournalEntry & { _source: string; _source_id: string }
+
+export interface Workbench {
+  incident: MajorIncident
+  children: Rec[]
+  candidates: (Rec & { _reasons: string[] })[]
+  timeline: TimelineEntry[]
 }
 
 export class ApiError extends Error {
@@ -71,6 +88,15 @@ export const api = {
     req<{ result: Rec }>('POST', `/api/now/approval/${table}/${id}`, { decision, comment }).then((r) => r.result),
   kbView: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/view`).then((r) => r.result),
   kbHelpful: (id: string) => req<{ result: Rec }>('POST', `/api/now/kb/${id}/helpful`).then((r) => r.result),
+  mim: {
+    list: (active = true) => req<{ result: MajorIncident[] }>('GET', `/api/now/mim?active=${active}`).then((r) => r.result),
+    get: (id: string) => req<{ result: Workbench }>('GET', `/api/now/mim/${id}`).then((r) => r.result),
+    promote: (id: string, business_impact?: string) => req<{ result: Rec }>('POST', `/api/now/mim/${id}/promote`, { business_impact }).then((r) => r.result),
+    link: (id: string, ids: string[]) => req<{ result: Rec[] }>('POST', `/api/now/mim/${id}/children`, { ids }).then((r) => r.result),
+    unlink: (id: string, childId: string) => req<void>('DELETE', `/api/now/mim/${id}/children/${childId}`),
+    comms: (id: string, body: { kind: 'initial' | 'update' | 'resolution'; audience: string; message: string }) =>
+      req<{ result: JournalEntry & { notified: number } }>('POST', `/api/now/mim/${id}/comms`, body).then((r) => r.result),
+  },
   search: (q: string) =>
     req<{ result: { table: string; label: string; total: number; records: Rec[] }[] }>('GET', `/api/now/search?q=${encodeURIComponent(q)}`).then((r) => r.result),
 }

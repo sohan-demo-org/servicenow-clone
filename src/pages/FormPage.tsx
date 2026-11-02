@@ -226,6 +226,18 @@ export function FormPage() {
     navigate(recordUrl('problem', p.sys_id))
   }
 
+  const promote = async () => {
+    const impact = prompt('Promote to Major Incident.\n\nDescribe the business impact (who and what is affected):', String(rec?.business_impact ?? ''))
+    if (impact === null) return
+    try {
+      await api.mim.promote(id, impact)
+      navigate(`/mim/${id}`)
+    } catch (e) {
+      const err = e as ApiError
+      setMsgs([{ type: 'error', text: `${err.message}${err.detail ? `: ${err.detail}` : ''}` }])
+    }
+  }
+
   const approve = async (decision: 'approved' | 'rejected') => {
     const r = await api.approve(table, id, decision)
     setRec(r)
@@ -348,6 +360,12 @@ export function FormPage() {
             Resolve
           </button>,
         )
+        if (rec?.major_incident_state !== 'accepted' && !rec?.parent_incident)
+          buttons.push(
+            <button key="mim" className="sn-btn danger-outline" onClick={promote} data-testid="form-promote-mim">
+              Promote to Major Incident
+            </button>,
+          )
         if (!rec?.problem_id)
           buttons.push(
             <button key="prb" className="sn-btn" onClick={createProblem}>
@@ -362,6 +380,12 @@ export function FormPage() {
         )
       }
     }
+    if (table === 'incident' && agent && rec?.major_incident_state === 'accepted')
+      buttons.push(
+        <Link key="wb" className="sn-btn danger" to={`/mim/${id}`} data-testid="form-open-workbench">
+          Major Incident Workbench
+        </Link>,
+      )
     if (table === 'change_request' && agent) {
       const s = String(rec?.state)
       if ((s === '-5' || s === '-4') && rec?.approval !== 'approved')
@@ -433,6 +457,29 @@ export function FormPage() {
       ))}
 
       <div className="sn-form">
+        {table === 'incident' && rec?.major_incident_state === 'accepted' && (
+          <div className="sn-mim-banner" data-testid="mim-banner">
+            <span className="sn-mim-tag">Major Incident</span>
+            <span>Promoted {formatDate(String(rec.promoted_on ?? ''))} by {rec._dv?.promoted_by ?? 'System'}</span>
+            {agent && (
+              <Link to={`/mim/${id}`} className="sn-link">
+                Open workbench →
+              </Link>
+            )}
+          </div>
+        )}
+        {table === 'incident' && rec?.parent_incident && (
+          <div className="sn-mim-banner child" data-testid="mim-child-banner">
+            <span>
+              Child of major incident <Link to={recordUrl('incident', String(rec.parent_incident))}>{rec._dv?.parent_incident}</Link>
+            </span>
+            {agent && (
+              <Link to={`/mim/${rec.parent_incident}`} className="sn-link">
+                Open workbench →
+              </Link>
+            )}
+          </div>
+        )}
         {table === 'incident' && rec && <SlaBar rec={rec} />}
         {table === 'change_request' && rec && (
           <div className="sn-stepper">

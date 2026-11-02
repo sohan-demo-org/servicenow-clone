@@ -35,6 +35,7 @@ export const NAV: NavApp[] = [
     modules: [
       { label: 'Create New', to: recordUrl('incident', '-1') },
       { label: 'Assigned to me', to: listUrl('incident', `assigned_to=${ME}^${ACTIVE_INC}`) },
+      { label: 'Major Incidents', to: '/mim' },
       { label: 'Open', to: listUrl('incident', ACTIVE_INC) },
       { label: 'Open - Unassigned', to: listUrl('incident', `assigned_toISEMPTY^${ACTIVE_INC}`) },
       { label: 'Resolved', to: listUrl('incident', 'state=6') },
