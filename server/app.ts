@@ -12,6 +12,7 @@ import {
   updateRecord,
 } from './db.ts'
 import type { Db, Row } from './db.ts'
+import { mimRouter } from './mim.ts'
 import { TABLES } from '../shared/schema.ts'
 
 interface Actor {
@@ -177,6 +178,8 @@ export function createApp(db: Db) {
       .filter((g) => g.total > 0)
     res.json({ result })
   })
+
+  app.use('/api/now/mim', mimRouter(db))
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))
 

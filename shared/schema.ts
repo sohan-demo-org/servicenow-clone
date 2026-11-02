@@ -73,6 +73,11 @@ export const INCIDENT_STATE = c(
   ['8', 'Canceled'],
 )
 
+export const MAJOR_INCIDENT_STATE = c(['accepted', 'Accepted'], ['rejected', 'Rejected'])
+
+/** Minutes between stakeholder updates while a major incident is open. */
+export const MIM_UPDATE_CADENCE_MIN = 30
+
 export const PROBLEM_STATE = c(
   ['101', 'New'],
   ['102', 'Assess'],
@@ -184,6 +189,11 @@ export const TABLES: Record<string, TableDef> = {
       { name: 'description', label: 'Description', type: 'text' },
       { name: 'problem_id', label: 'Problem', type: 'reference', ref: 'problem' },
       { name: 'rfc', label: 'Change Request', type: 'reference', ref: 'change_request' },
+      { name: 'parent_incident', label: 'Parent Incident', type: 'reference', ref: 'incident', refQuery: 'major_incident_state=accepted' },
+      { name: 'major_incident_state', label: 'Major incident state', type: 'choice', choices: MAJOR_INCIDENT_STATE, readOnly: true },
+      { name: 'promoted_on', label: 'Promoted', type: 'datetime', readOnly: true },
+      { name: 'promoted_by', label: 'Promoted by', type: 'reference', ref: 'sys_user', readOnly: true },
+      { name: 'business_impact', label: 'Business impact', type: 'text' },
       { name: 'close_code', label: 'Resolution code', type: 'choice', choices: c(['Solved (Permanently)', 'Solved (Permanently)'], ['Solved (Work Around)', 'Solved (Work Around)'], ['Not Solved (Not Reproducible)', 'Not Solved (Not Reproducible)'], ['Closed/Resolved by Caller', 'Closed/Resolved by Caller']) },
       { name: 'close_notes', label: 'Resolution notes', type: 'text' },
       { name: 'opened_at', label: 'Opened', type: 'datetime', readOnly: true },
@@ -199,9 +209,11 @@ export const TABLES: Record<string, TableDef> = {
       },
     ],
     tabs: [
-      { title: 'Related Records', left: ['problem_id'], right: ['rfc'] },
+      { title: 'Related Records', left: ['problem_id', 'parent_incident'], right: ['rfc'] },
       { title: 'Resolution Information', left: ['close_code', 'resolved_at'], right: ['opened_at'], full: ['close_notes'] },
+      { title: 'Major Incident', left: ['major_incident_state', 'promoted_on'], right: ['promoted_by'], full: ['business_impact'] },
     ],
+    related: [{ table: 'incident', field: 'parent_incident', label: 'Child Incidents' }],
   },
   problem: {
     name: 'problem',

@@ -2,6 +2,30 @@ import { useState } from 'react'
 import type { JournalEntry } from '../api.ts'
 import { formatDate, initials, timeAgo } from '../util.ts'
 
+const ENTRY_LABEL: Record<JournalEntry['element'], string> = {
+  work_notes: 'Work notes',
+  comments: 'Additional comments',
+  audit: 'Field changes',
+  comms: 'Stakeholder update',
+}
+
+export function CommsText({ value }: { value: string }) {
+  let c: { kind?: string; audience?: string; message?: string }
+  try {
+    c = JSON.parse(value)
+  } catch {
+    c = { message: value }
+  }
+  return (
+    <div className="sn-entry-text">
+      <div className="sn-comms-meta">
+        <span className={`sn-comms-kind ${c.kind ?? 'update'}`}>{c.kind ?? 'update'}</span> to <b>{c.audience ?? 'All affected users'}</b>
+      </div>
+      {c.message}
+    </div>
+  )
+}
+
 interface Props {
   entries: JournalEntry[]
   onPost: (element: 'work_notes' | 'comments', value: string) => Promise<void>
@@ -68,7 +92,7 @@ export function ActivityStream({ entries, onPost, allowWorkNotes, hideAudit }: P
             <div className="sn-entry-body">
               <div className="sn-entry-meta">
                 <b>{e.sys_created_by}</b>
-                <span className="sn-entry-type">{e.element === 'work_notes' ? 'Work notes' : e.element === 'comments' ? 'Additional comments' : 'Field changes'}</span>
+                <span className="sn-entry-type">{ENTRY_LABEL[e.element]}</span>
                 <span className="muted" title={formatDate(e.sys_created_on)}>
                   {timeAgo(e.sys_created_on)}
                 </span>
@@ -87,6 +111,8 @@ export function ActivityStream({ entries, onPost, allowWorkNotes, hideAudit }: P
                     ))}
                   </tbody>
                 </table>
+              ) : e.element === 'comms' ? (
+                <CommsText value={e.value} />
               ) : (
                 <div className="sn-entry-text">{e.value}</div>
               )}

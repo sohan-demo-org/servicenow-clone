@@ -381,9 +381,107 @@ export function seed(db: Db): void {
       )
       db.prepare('UPDATE kb_knowledge SET sys_view_count = ?, rating = ? WHERE sys_id = ?').run(Math.floor(rand() * 900) + 20, Math.floor(rand() * 40), kb.sys_id)
     })
+    seedMajorIncident(db, { users, groups, cis, hoursAgo, actorOf })
     db.exec('COMMIT')
   } catch (e) {
     db.exec('ROLLBACK')
     throw e
+  }
+}
+
+interface MimSeedCtx {
+  users: Record<string, Row>
+  groups: Record<string, Row>
+  cis: Record<string, Row>
+  hoursAgo: (h: number) => string
+  actorOf: (u: Row) => { sys_id: string; user_name: string; name: string }
+}
+
+/** An in-flight Exchange Online outage: a promoted major incident with linked user reports, comms already sent, and unlinked look-alikes to suggest. */
+function seedMajorIncident(db: Db, { users, groups, cis, hoursAgo, actorOf }: MimSeedCtx): void {
+  const beth = users['beth.anglin']
+  const mins = (m: number) => hoursAgo(m / 60)
+  const email = cis['Email - Exchange Online']
+  const base = { category: 'software', subcategory: 'email', cmdb_ci: email.sys_id, assignment_group: groups['Service Desk'].sys_id, contact_type: 'self-service' }
+  const parent = insertRecord(
+    db,
+    'incident',
+    {
+      ...base,
+      short_description: 'Exchange Online outage - mail flow stopped for all regions',
+      description: 'Inbound and outbound mail queues are backing up across NA and EMEA tenants. Microsoft 365 admin center shows advisory EX912345 (degraded transport).',
+      caller_id: users['jane.doe'].sys_id,
+      assigned_to: beth.sys_id,
+      impact: '1',
+      urgency: '1',
+      priority: '1',
+      state: '2',
+      contact_type: 'phone',
+      major_incident_state: 'accepted',
+      promoted_on: mins(82),
+      promoted_by: beth.sys_id,
+      business_impact: 'Company-wide: no external email for ~2,400 employees. Finance month-end invoice runs and Sales quote delivery are blocked.',
+      opened_at: mins(95),
+      sys_created_on: mins(95),
+      sys_updated_on: mins(38),
+    },
+    actorOf(users['jane.doe']),
+    { skipRules: true },
+  )
+  const pid = String(parent.sys_id)
+  addJournal(db, 'incident', pid, 'work_notes', 'Multiple reports of NDRs in the last 15 minutes. Checking Microsoft 365 service health.', actorOf(beth), mins(90))
+  addJournal(db, 'incident', pid, 'work_notes', 'Promoted to Major Incident by Beth Anglin. Stakeholder updates due every 30 minutes.', actorOf(beth), mins(82))
+  addJournal(
+    db,
+    'incident',
+    pid,
+    'comms',
+    JSON.stringify({ kind: 'initial', audience: 'All employees', message: 'We are aware that email is not being delivered. IT is engaged with Microsoft and investigating. Next update in 30 minutes.' }),
+    actorOf(beth),
+    mins(78),
+  )
+  addJournal(db, 'incident', pid, 'work_notes', 'Bridge opened with Microsoft support (case 2611020040001). Transport queue depth 18k and growing.', actorOf(users['david.loo']), mins(60))
+  addJournal(
+    db,
+    'incident',
+    pid,
+    'comms',
+    JSON.stringify({ kind: 'update', audience: 'All employees', message: 'Microsoft has confirmed a transport service degradation in our region. Mail is queued, not lost. Workaround: use Teams for urgent internal communication.' }),
+    actorOf(beth),
+    mins(41),
+  )
+
+  const reports: [string, string, number][] = [
+    ['Cannot send email - getting undeliverable messages', 'bud.richman', 88],
+    ['Outlook says disconnected from server', 'abel.tuter', 84],
+    ['Customers say my quotes never arrived', 'abraham.lincoln', 70],
+  ]
+  for (const [sd, caller, m] of reports) {
+    const child = insertRecord(
+      db,
+      'incident',
+      { ...base, short_description: sd, caller_id: users[caller].sys_id, impact: '2', urgency: '2', priority: '3', state: '2', assigned_to: beth.sys_id, parent_incident: pid, opened_at: mins(m), sys_created_on: mins(m) },
+      actorOf(users[caller]),
+      { skipRules: true },
+    )
+    addJournal(db, 'incident', String(child.sys_id), 'comments', sd, actorOf(users[caller]), mins(m))
+    addJournal(db, 'incident', String(child.sys_id), 'work_notes', `Linked as a child of major incident ${parent.number}.`, actorOf(beth), mins(Math.min(m, 80)))
+  }
+  addJournal(db, 'incident', pid, 'work_notes', 'Linked 3 child incidents from user reports.', actorOf(beth), mins(76))
+
+  const lookalikes: [string, string, string, number][] = [
+    ['Mobile mail not syncing on iPhone', 'carol.coughlin', 'Exchange account on iOS stuck on "Checking mail" since this morning.', 34],
+    ['Shared mailbox emails not arriving', 'charlie.whitherspoon', 'product-team@ shared mailbox has not received anything for over an hour.', 22],
+    ['Calendar invites to external partners bouncing', 'sam.sorokin', 'Interview invites to candidates come back with a 4.4.7 delivery delay notice.', 12],
+  ]
+  for (const [sd, caller, desc, m] of lookalikes) {
+    const inc = insertRecord(
+      db,
+      'incident',
+      { ...base, short_description: sd, description: desc, caller_id: users[caller].sys_id, impact: '2', urgency: '2', priority: '3', state: '1', opened_at: mins(m), sys_created_on: mins(m) },
+      actorOf(users[caller]),
+      { skipRules: true },
+    )
+    addJournal(db, 'incident', String(inc.sys_id), 'comments', desc, actorOf(users[caller]), mins(m))
   }
 }

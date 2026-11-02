@@ -33,6 +33,10 @@ export function openDb(path: string): Db {
       `CREATE TABLE IF NOT EXISTS ${t.name} (sys_id TEXT PRIMARY KEY, ${cols.join(', ')}, ` +
         'sys_created_on TEXT, sys_created_by TEXT, sys_updated_on TEXT, sys_updated_by TEXT, sys_view_count INTEGER DEFAULT 0)',
     )
+    const existing = new Set((db.prepare(`PRAGMA table_info(${t.name})`).all() as { name: string }[]).map((c) => c.name))
+    for (const [i, f] of t.fields.filter((f) => !f.name.startsWith('sys_')).entries()) {
+      if (!existing.has(f.name)) db.exec(`ALTER TABLE ${t.name} ADD COLUMN ${cols[i]}`)
+    }
   }
   db.exec(`CREATE TABLE IF NOT EXISTS sys_journal_field (
     sys_id TEXT PRIMARY KEY, name TEXT, element_id TEXT, element TEXT, value TEXT,
@@ -334,8 +338,20 @@ export function updateRecord(db: Db, table: string, id: string, body: Record<str
         }))
       if (diff.length) addJournal(db, table, id, 'audit', JSON.stringify(diff), actor)
     }
+    if (table === 'incident' && changes.includes('state') && rec.state === '6' && prev.major_incident_state === 'accepted') {
+      resolveChildIncidents(db, { ...prev, ...rec }, actor)
+    }
   }
   return getRecord(db, table, id)
+}
+
+function resolveChildIncidents(db: Db, parent: Row, actor: Actor | null): void {
+  const children = db.prepare("SELECT sys_id FROM incident WHERE parent_incident = ? AND (state IS NULL OR state NOT IN ('6','7','8'))").all(String(parent.sys_id)) as { sys_id: string }[]
+  for (const child of children) {
+    updateRecord(db, 'incident', child.sys_id, { state: '6', close_code: parent.close_code, close_notes: `Resolved with major incident ${parent.number}: ${parent.close_notes}` }, actor)
+    addJournal(db, 'incident', child.sys_id, 'work_notes', `Resolved automatically because parent major incident ${parent.number} was resolved.`, actor)
+  }
+  if (children.length) addJournal(db, 'incident', String(parent.sys_id), 'work_notes', `Resolved ${children.length} child incident${children.length === 1 ? '' : 's'} with this major incident.`, actor)
 }
 
 export function deleteRecord(db: Db, table: string, id: string): void {
