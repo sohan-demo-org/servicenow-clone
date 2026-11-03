@@ -30,6 +30,52 @@ function actorOf(db: Db, req: Request): Actor | null {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
+export const APPROVAL_PRICE_THRESHOLD = 1000
+
+/** Clamp the ordered quantity to 1..10 and decide whether the total needs approval. */
+export function orderTerms(unitPrice: unknown, rawQuantity: unknown) {
+  const quantity = Math.max(1, Math.min(10, Number(rawQuantity ?? 1) || 1))
+  const price = Number(unitPrice ?? 0) * quantity
+  return { quantity, price, needsApproval: price >= APPROVAL_PRICE_THRESHOLD }
+}
+
+/** Render catalog variables as `key: value` lines, dropping blank answers. */
+export function formatVariables(variables: unknown): string {
+  const vars = variables && typeof variables === 'object' ? (variables as Record<string, unknown>) : {}
+  return Object.entries(vars)
+    .filter(([, v]) => v !== '' && v != null)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n')
+}
+
+/** Field updates applied when an approver approves or rejects a record. */
+export function approvalFields(table: string, decision: 'approved' | 'rejected'): Record<string, string> {
+  if (table === 'change_request') return decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
+  if (table === 'sc_req_item') return decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
+  throw new HttpError(400, `Approvals are not supported for ${table}`)
+}
+
+export const SEARCH_TARGETS: [string, string][] = [
+  ['incident', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
+  ['problem', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
+  ['change_request', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
+  ['sc_req_item', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
+  ['kb_knowledge', 'numberLIKE{q}^ORshort_descriptionLIKE{q}^ORtextLIKE{q}'],
+  ['cmdb_ci', 'nameLIKE{q}^ORip_addressLIKE{q}'],
+  ['sys_user', 'nameLIKE{q}^ORuser_nameLIKE{q}^ORemailLIKE{q}'],
+]
+
+/** Global search: up to 5 matches per table, omitting tables with no hits. */
+export function globalSearch(db: Db, rawQuery: string | undefined) {
+  const q = rawQuery?.trim() ?? ''
+  if (!q) return []
+  const safe = q.replace(/\^/g, '')
+  return SEARCH_TARGETS.map(([table, query]) => {
+    const r = listRecords(db, table, { query: query.replaceAll('{q}', safe), limit: 5, ctx: {} })
+    return { table, label: TABLES[table].plural, total: r.total, records: r.result }
+  }).filter((g) => g.total > 0)
+}
+
 export function createApp(db: Db) {
   const app = express()
   app.use(express.json({ limit: '1mb' }))
@@ -102,10 +148,7 @@ export function createApp(db: Db) {
   app.post('/api/now/catalog/:itemId/order', (req, res) => {
     const actor = actorOf(db, req)
     const item = getRecord(db, 'sc_cat_item', req.params.itemId)
-    const quantity = Math.max(1, Math.min(10, Number(req.body?.quantity ?? 1) || 1))
-    const price = Number(item.price ?? 0) * quantity
-    const needsApproval = price >= 1000
-    const variables = req.body?.variables && typeof req.body.variables === 'object' ? req.body.variables : {}
+    const { quantity, price, needsApproval } = orderTerms(item.price, req.body?.quantity)
     const ritm = insertRecord(
       db,
       'sc_req_item',
@@ -119,10 +162,7 @@ export function createApp(db: Db) {
         approval: needsApproval ? 'requested' : 'approved',
         assignment_group: item.fulfillment_group,
         short_description: item.name,
-        variables: Object.entries(variables)
-          .filter(([, v]) => v !== '' && v != null)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join('\n'),
+        variables: formatVariables(req.body?.variables),
       },
       actor,
     )
@@ -134,11 +174,7 @@ export function createApp(db: Db) {
     const actor = actorOf(db, req)
     const decision = req.body?.decision === 'rejected' ? 'rejected' : 'approved'
     const { table, id } = req.params
-    let fields: Record<string, string>
-    if (table === 'change_request') fields = decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
-    else if (table === 'sc_req_item') fields = decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
-    else throw new HttpError(400, `Approvals are not supported for ${table}`)
-    const result = updateRecord(db, table, id, fields, actor)
+    const result = updateRecord(db, table, id, approvalFields(table, decision), actor)
     addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
     res.json({ result })
   })
@@ -154,28 +190,7 @@ export function createApp(db: Db) {
   })
 
   app.get('/api/now/search', (req, res) => {
-    const q = str(req.query.q)?.trim() ?? ''
-    if (!q) {
-      res.json({ result: [] })
-      return
-    }
-    const targets: [string, string][] = [
-      ['incident', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
-      ['problem', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
-      ['change_request', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
-      ['sc_req_item', 'numberLIKE{q}^ORshort_descriptionLIKE{q}'],
-      ['kb_knowledge', "numberLIKE{q}^ORshort_descriptionLIKE{q}^ORtextLIKE{q}"],
-      ['cmdb_ci', 'nameLIKE{q}^ORip_addressLIKE{q}'],
-      ['sys_user', 'nameLIKE{q}^ORuser_nameLIKE{q}^ORemailLIKE{q}'],
-    ]
-    const safe = q.replace(/\^/g, '')
-    const result = targets
-      .map(([table, query]) => {
-        const r = listRecords(db, table, { query: query.replaceAll('{q}', safe), limit: 5, ctx: {} })
-        return { table, label: TABLES[table].plural, total: r.total, records: r.result }
-      })
-      .filter((g) => g.total > 0)
-    res.json({ result })
+    res.json({ result: globalSearch(db, str(req.query.q)) })
   })
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))
