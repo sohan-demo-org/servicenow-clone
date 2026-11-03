@@ -66,7 +66,7 @@ Send `X-User: <sys_id>` to act as a user (the UI does this after login). Support
 ```bash
 npm run typecheck
 npm run lint
-npm test             # API tests (node:test, in-memory DB)
+npm test             # unit + API tests (node:test, in-memory DB)
 ```
 
 ## Screenshots
