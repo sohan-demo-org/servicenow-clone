@@ -31,8 +31,10 @@ export function openDb(path: string): Db {
       .map((f) => `"${f.name}" ${f.type === 'integer' ? 'INTEGER' : f.type === 'currency' ? 'REAL' : 'TEXT'}`)
     db.exec(
       `CREATE TABLE IF NOT EXISTS ${t.name} (sys_id TEXT PRIMARY KEY, ${cols.join(', ')}, ` +
-        'sys_created_on TEXT, sys_created_by TEXT, sys_updated_on TEXT, sys_updated_by TEXT, sys_view_count INTEGER DEFAULT 0)',
+        'sys_created_on TEXT, sys_created_by TEXT, sys_updated_on TEXT, sys_updated_by TEXT, sys_view_count INTEGER DEFAULT 0, sys_mod_count INTEGER DEFAULT 0)',
     )
+    const existing = (db.prepare(`PRAGMA table_info(${t.name})`).all() as { name: string }[]).map((c) => c.name)
+    if (!existing.includes('sys_mod_count')) db.exec(`ALTER TABLE ${t.name} ADD COLUMN sys_mod_count INTEGER DEFAULT 0`)
   }
   db.exec(`CREATE TABLE IF NOT EXISTS sys_journal_field (
     sys_id TEXT PRIMARY KEY, name TEXT, element_id TEXT, element TEXT, value TEXT,
@@ -307,10 +309,20 @@ export function insertRecord(db: Db, table: string, body: Record<string, unknown
   return getRecord(db, table, id)
 }
 
-export function updateRecord(db: Db, table: string, id: string, body: Record<string, unknown>, actor: Actor | null): Row {
+export function updateRecord(
+  db: Db,
+  table: string,
+  id: string,
+  body: Record<string, unknown>,
+  actor: Actor | null,
+  opts: { expectedModCount?: number; onChange?: (fields: string[]) => void } = {},
+): Row {
   const t = tableDef(table)
   const prev = db.prepare(`SELECT * FROM ${t.name} WHERE sys_id = ?`).get(id) as Row | undefined
   if (!prev) throw new HttpError(404, 'No Record found', `Record ${id} does not exist in ${table}`)
+  if (opts.expectedModCount !== undefined && Number(prev.sys_mod_count ?? 0) !== opts.expectedModCount) {
+    throw new HttpError(409, 'Record changed by another user', `${String(prev.sys_updated_by)} updated this record at ${String(prev.sys_updated_on)} UTC while you were editing`)
+  }
   const rec = clean(t, body)
   for (const f of t.fields) {
     if (f.mandatory && f.name in rec && (rec[f.name] == null || rec[f.name] === '')) {
@@ -321,7 +333,7 @@ export function updateRecord(db: Db, table: string, id: string, body: Record<str
   const changes = Object.keys(rec).filter((k) => String(rec[k] ?? '') !== String(prev[k] ?? ''))
   if (changes.length) {
     const now = nowStr()
-    const sets = [...changes.map((k) => `"${k}" = ?`), 'sys_updated_on = ?', 'sys_updated_by = ?']
+    const sets = [...changes.map((k) => `"${k}" = ?`), 'sys_updated_on = ?', 'sys_updated_by = ?', 'sys_mod_count = COALESCE(sys_mod_count, 0) + 1']
     db.prepare(`UPDATE ${t.name} SET ${sets.join(', ')} WHERE sys_id = ?`).run(...changes.map((k) => rec[k]), now, actor?.user_name ?? 'system', id)
     if (t.journal) {
       const diff = changes
@@ -334,6 +346,7 @@ export function updateRecord(db: Db, table: string, id: string, body: Record<str
         }))
       if (diff.length) addJournal(db, table, id, 'audit', JSON.stringify(diff), actor)
     }
+    opts.onChange?.(changes)
   }
   return getRecord(db, table, id)
 }

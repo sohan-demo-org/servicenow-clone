@@ -30,6 +30,7 @@ Production-style run: `npm run build && npm start` (Express serves `dist/` on :3
 - **Classic UI**: header with All / Favorites / History menus, filterable application navigator, global search, user menu with *Impersonate user*.
 - **List view**: encoded-query breadcrumbs (click to trim), condition builder (AND/OR, is / contains / is one of / empty...), quick search, column sort, right-click *Show Matching / Filter Out*, pagination, bulk *Assign to me / Delete*.
 - **Form view**: two-column layout, mandatory indicators, reference fields with type-ahead lookup, dependent Category -> Subcategory, live Impact x Urgency -> Priority, SLA bar, change state stepper, form tabs, related lists.
+- **Live presence & collision detection**: avatars in the form header show who else has the record open and which fields they are editing (colored outline + "Beth Anglin is editing" tag on the field). Saves, work notes and approvals by others stream in over Server-Sent Events: untouched fields update in place with a highlight, and fields you are also editing raise a *Theirs vs. Yours* conflict banner (Use theirs / Keep mine). Saves send `X-Base-Mod-Count`; a stale `sys_mod_count` returns 409 instead of silently overwriting.
 - **Activity stream**: work notes vs. additional comments, plus automatic *field change* audit entries.
 - **Business rules (server)**: auto-numbering (INC/PRB/CHG/RITM/KB), priority matrix, mandatory Resolution code/notes to resolve, auto In Progress on assignment, change approval flow (Request Approval -> Approve/Reject -> Scheduled -> Implement -> Review -> Closed), catalog orders >= $1,000 need approval.
 - **Dashboard**: KPI tiles and charts that drill down into filtered lists.
@@ -58,8 +59,10 @@ src/               React 19 + Vite + React Router
 | POST | `/api/now/catalog/:item/order` | creates a Requested Item |
 | POST | `/api/now/approval/:table/:sys_id` | `{ "decision": "approved" \| "rejected" }` |
 | GET | `/api/now/search?q=` | global search |
+| GET | `/api/now/presence/:table/:sys_id/stream?user=&client=` | SSE stream: `presence` (viewers + editing fields) and `record` (updated / journal / deleted) events |
+| POST | `/api/now/presence/:table/:sys_id` | `{ "client": "...", "editing": ["field", ...] }` |
 
-Send `X-User: <sys_id>` to act as a user (the UI does this after login). Supported query operators: `=`, `!=`, `LIKE`, `NOTLIKE`, `STARTSWITH`, `IN`, `NOTIN`, `ISEMPTY`, `ISNOTEMPTY`, `<`, `>`, `<=`, `>=`, `^OR`, `ORDERBY`/`ORDERBYDESC`, plus `javascript:gs.getUserID()` and `javascript:gs.daysAgo(n)`.
+Send `X-User: <sys_id>` to act as a user (the UI does this after login). PATCH also honors `X-Base-Mod-Count` (409 if the record's `sys_mod_count` moved on) and `X-Client-Id` (tags live-update events so a tab can ignore its own). Supported query operators: `=`, `!=`, `LIKE`, `NOTLIKE`, `STARTSWITH`, `IN`, `NOTIN`, `ISEMPTY`, `ISNOTEMPTY`, `<`, `>`, `<=`, `>=`, `^OR`, `ORDERBY`/`ORDERBYDESC`, plus `javascript:gs.getUserID()` and `javascript:gs.daysAgo(n)`.
 
 ## Checks
 

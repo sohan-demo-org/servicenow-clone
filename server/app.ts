@@ -12,6 +12,7 @@ import {
   updateRecord,
 } from './db.ts'
 import type { Db, Row } from './db.ts'
+import { PresenceHub } from './presence.ts'
 import { TABLES } from '../shared/schema.ts'
 
 interface Actor {
@@ -30,9 +31,20 @@ function actorOf(db: Db, req: Request): Actor | null {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
-export function createApp(db: Db) {
+const who = (a: Actor | null) => (a ? { sys_id: a.sys_id, name: a.name, user_name: a.user_name } : null)
+
+function baseModCount(req: Request): number | undefined {
+  const raw = req.header('x-base-mod-count')
+  if (raw == null || raw === '') return undefined
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 0) throw new HttpError(400, 'Invalid X-Base-Mod-Count header')
+  return n
+}
+
+export function createApp(db: Db, presence: PresenceHub = new PresenceHub()) {
   const app = express()
   app.use(express.json({ limit: '1mb' }))
+  const client = (req: Request) => req.header('x-client-id') ?? null
 
   app.post('/api/login', (req, res) => {
     const { user_name, password } = req.body ?? {}
@@ -65,16 +77,22 @@ export function createApp(db: Db) {
   app.patch('/api/now/table/:table/:id', (req, res) => {
     const actor = actorOf(db, req)
     const { work_notes, comments, ...fields } = req.body ?? {}
-    const result = updateRecord(db, req.params.table, req.params.id, fields, actor)
-    if (TABLES[req.params.table]?.journal) {
-      if (work_notes) addJournal(db, req.params.table, req.params.id, 'work_notes', String(work_notes), actor)
-      if (comments) addJournal(db, req.params.table, req.params.id, 'comments', String(comments), actor)
+    const { table, id } = req.params
+    let changed: string[] = []
+    const result = updateRecord(db, table, id, fields, actor, { expectedModCount: baseModCount(req), onChange: (f) => (changed = f) })
+    if (TABLES[table]?.journal) {
+      if (work_notes) addJournal(db, table, id, 'work_notes', String(work_notes), actor)
+      if (comments) addJournal(db, table, id, 'comments', String(comments), actor)
     }
+    if (changed.length) presence.notify(table, id, { type: 'updated', by: who(actor), client: client(req), fields: changed, sys_mod_count: Number(result.sys_mod_count ?? 0) })
+    else if (TABLES[table]?.journal && (work_notes || comments))
+      presence.notify(table, id, { type: 'journal', by: who(actor), client: client(req), element: work_notes ? 'work_notes' : 'comments' })
     res.json({ result })
   })
 
   app.delete('/api/now/table/:table/:id', (req, res) => {
     deleteRecord(db, req.params.table, req.params.id)
+    presence.notify(req.params.table, req.params.id, { type: 'deleted', by: who(actorOf(db, req)), client: client(req) })
     res.status(204).end()
   })
 
@@ -88,9 +106,34 @@ export function createApp(db: Db) {
     const element = req.body?.element === 'work_notes' ? 'work_notes' : 'comments'
     const value = String(req.body?.value ?? '').trim()
     if (!value) throw new HttpError(400, 'Journal entry cannot be empty')
-    const entry = addJournal(db, req.params.table, req.params.id, element, value, actorOf(db, req))
+    const actor = actorOf(db, req)
+    const entry = addJournal(db, req.params.table, req.params.id, element, value, actor)
     db.prepare(`UPDATE ${req.params.table} SET sys_updated_on = ? WHERE sys_id = ?`).run(entry.sys_created_on, req.params.id)
+    presence.notify(req.params.table, req.params.id, { type: 'journal', by: who(actor), client: client(req), element })
     res.status(201).json({ result: entry })
+  })
+
+  // EventSource cannot send headers, so the stream takes the user as a query param (same trust model as X-User).
+  app.get('/api/now/presence/:table/:id/stream', (req, res) => {
+    const { table, id } = req.params
+    getRecord(db, table, id)
+    const u = db.prepare('SELECT sys_id, user_name, name, role FROM sys_user WHERE sys_id = ?').get(str(req.query.user) ?? '') as Actor | undefined
+    if (!u) throw new HttpError(401, 'Unknown user')
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+    res.flushHeaders()
+    const requested = str(req.query.client)
+    presence.join(table, id, { sys_id: u.sys_id, name: u.name, user_name: u.user_name }, res, requested && /^[\w-]{6,64}$/.test(requested) ? requested : undefined)
+  })
+
+  app.get('/api/now/presence/:table/:id', (req, res) => {
+    res.json({ result: presence.viewers(req.params.table, req.params.id) })
+  })
+
+  app.post('/api/now/presence/:table/:id', (req, res) => {
+    const editing = Array.isArray(req.body?.editing) ? req.body.editing.filter((f: unknown): f is string => typeof f === 'string').slice(0, 50) : []
+    const ok = presence.setEditing(req.params.table, req.params.id, String(req.body?.client ?? ''), editing)
+    if (!ok) throw new HttpError(404, 'Presence session not found')
+    res.json({ result: presence.viewers(req.params.table, req.params.id) })
   })
 
   app.get('/api/now/stats/:table', (req, res) => {
@@ -138,8 +181,10 @@ export function createApp(db: Db) {
     if (table === 'change_request') fields = decision === 'approved' ? { approval: 'approved', state: '-2' } : { approval: 'rejected', state: '-5' }
     else if (table === 'sc_req_item') fields = decision === 'approved' ? { approval: 'approved', stage: 'fulfillment', state: '2' } : { approval: 'rejected', stage: 'complete', state: '4' }
     else throw new HttpError(400, `Approvals are not supported for ${table}`)
-    const result = updateRecord(db, table, id, fields, actor)
+    let changed: string[] = []
+    const result = updateRecord(db, table, id, fields, actor, { onChange: (f) => (changed = f) })
     addJournal(db, table, id, 'work_notes', `${decision === 'approved' ? 'Approved' : 'Rejected'} by ${actor?.name ?? 'System'}${req.body?.comment ? `: ${req.body.comment}` : ''}`, actor)
+    presence.notify(table, id, changed.length ? { type: 'updated', by: who(actor), client: client(req), fields: changed, sys_mod_count: Number(result.sys_mod_count ?? 0) } : { type: 'journal', by: who(actor), client: client(req), element: 'work_notes' })
     res.json({ result })
   })
 
