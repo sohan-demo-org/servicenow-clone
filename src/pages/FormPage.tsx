@@ -208,7 +208,9 @@ export function FormPage() {
     if (items.length) setConflicts({ by, items })
   }
 
-  const presence = usePresence(table, id, Boolean(def) && !isNew && !notFound, changed, (ev) => {
+  const [focused, setFocused] = useState<string | null>(null)
+  const editing = useMemo(() => (focused && !changed.includes(focused) ? [...changed, focused] : changed), [changed, focused])
+  const presence = usePresence(table, id, Boolean(def) && !isNew && !notFound, editing, (ev) => {
     onRecordEvent(ev).catch(() => {})
   })
   const remoteEditors = useMemo(() => {
@@ -383,6 +385,10 @@ export function FormPage() {
         key={name}
         style={editors ? ({ '--pc': editors[0].color } as React.CSSProperties) : undefined}
         data-testid={`field-${name}`}
+        onFocus={() => setFocused(name)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((cur) => (cur === name ? null : cur))
+        }}
       >
         <label htmlFor={fid}>
           {mandatory && <span className={`sn-mand ${v ? 'filled' : ''}`}>*</span>}
