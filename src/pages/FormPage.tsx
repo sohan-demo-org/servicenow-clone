@@ -3,11 +3,12 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SLA_HOURS, SUBCATEGORY, TABLES, calcPriority, getField } from '../../shared/schema.ts'
 import type { FieldDef, FormSection } from '../../shared/schema.ts'
 import { ApiError, api } from '../api.ts'
-import type { JournalEntry, Rec } from '../api.ts'
+import type { JournalEntry, Rec, RecordEvent } from '../api.ts'
 import { ActivityStream } from '../components/ActivityStream.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { usePageTitle } from '../components/Layout.tsx'
 import { MiniList } from '../components/ListTable.tsx'
+import { PresenceBar, presenceColor, usePresence } from '../components/Presence.tsx'
 import { ReferenceInput } from '../components/ReferenceInput.tsx'
 import { isAgent, useAuth } from '../auth.tsx'
 import { parseQuery } from '../query.ts'
@@ -17,6 +18,12 @@ type Draft = Record<string, string | null>
 interface Msg {
   type: 'info' | 'error' | 'success'
   text: string
+}
+interface Conflict {
+  field: string
+  label: string
+  theirs: string
+  mine: string
 }
 
 function SlaBar({ rec }: { rec: Rec }) {
@@ -62,6 +69,9 @@ export function FormPage() {
   const [relTab, setRelTab] = useState(0)
   const [busy, setBusy] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  const [conflicts, setConflicts] = useState<{ by: string; items: Conflict[] } | null>(null)
+  const [flash, setFlash] = useState<Set<string>>(new Set())
+  const [toast, setToast] = useState<string | null>(null)
   const agent = isAgent(user)
 
   const title = isNew ? `New ${def?.label ?? ''}` : rec ? `${def?.label} - ${displayValue(table, rec, def.displayField)}` : (def?.label ?? '')
@@ -79,6 +89,7 @@ export function FormPage() {
     setTab(0)
     setRelTab(0)
     setNotFound(false)
+    setConflicts(null)
     if (isNew) {
       const defaults: Draft = {}
       const names: Record<string, string> = {}
@@ -149,6 +160,81 @@ export function FormPage() {
 
   const changed = useMemo(() => Object.keys(draft).filter((k) => String(draft[k] ?? '') !== String(rec?.[k] ?? '')), [draft, rec])
 
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  useEffect(() => {
+    if (!flash.size) return
+    const t = setTimeout(() => setFlash(new Set()), 2500)
+    return () => clearTimeout(t)
+  }, [flash])
+
+  /** Pull the latest server copy into the form without discarding unsaved edits; returns fields both sides changed. */
+  const mergeLatest = async (): Promise<{ latest: Rec; items: Conflict[] }> => {
+    const latest = await api.get(table, id)
+    const items: Conflict[] = changed
+      .filter((k) => String(latest[k] ?? '') !== String(rec?.[k] ?? '') && String(latest[k] ?? '') !== String(draft[k] ?? ''))
+      .map((k) => ({
+        field: k,
+        label: getField(table, k)?.label ?? k,
+        theirs: displayValue(table, latest, k) || '(empty)',
+        mine: (getField(table, k)?.type === 'reference' ? dv[k] : displayValue(table, { sys_id: '', [k]: draft[k] ?? '' }, k)) || '(empty)',
+      }))
+    const nextDv: Record<string, string> = { ...(latest._dv ?? {}) }
+    for (const k of Object.keys(draft)) if (k in dv) nextDv[k] = dv[k]
+    setRec(latest)
+    setDv(nextDv)
+    return { latest, items }
+  }
+
+  const onRecordEvent = async (ev: RecordEvent) => {
+    const by = ev.by?.name ?? 'System'
+    if (ev.type === 'deleted') {
+      setMsgs([{ type: 'error', text: `This ${def.label.toLowerCase()} was deleted by ${by}.` }])
+      return
+    }
+    if (ev.type === 'journal') {
+      await loadJournal()
+      setToast(`${by} added ${ev.element === 'work_notes' ? 'a work note' : 'a comment'}`)
+      return
+    }
+    const { items } = await mergeLatest()
+    await loadJournal()
+    setFlash(new Set(ev.fields))
+    setToast(`${by} updated ${ev.fields.map((f) => getField(table, f)?.label ?? f).join(', ')}`)
+    if (items.length) setConflicts({ by, items })
+  }
+
+  const [focused, setFocused] = useState<string | null>(null)
+  const editing = useMemo(() => (focused && !changed.includes(focused) ? [...changed, focused] : changed), [changed, focused])
+  const presence = usePresence(table, id, Boolean(def) && !isNew && !notFound, editing, (ev) => {
+    onRecordEvent(ev).catch(() => {})
+  })
+  const remoteEditors = useMemo(() => {
+    const m: Record<string, { name: string; color: string }[]> = {}
+    for (const v of presence.viewers)
+      for (const f of v.editing) (m[f] ??= []).push({ name: v.user.sys_id === user?.sys_id ? 'You (another tab)' : v.user.name, color: presenceColor(v.user.sys_id) })
+    return m
+  }, [presence.viewers, user])
+
+  const takeTheirs = () => {
+    if (!conflicts) return
+    const drop = new Set(conflicts.items.map((c) => c.field))
+    setDraft((d) => Object.fromEntries(Object.entries(d).filter(([k]) => !drop.has(k))))
+    setDv((d) => {
+      const next = { ...d }
+      for (const k of drop) {
+        if (rec?._dv?.[k] !== undefined) next[k] = rec._dv[k]
+        else delete next[k]
+      }
+      return next
+    })
+    setConflicts(null)
+  }
+
   const missingMandatory = (extra: string[] = []): FieldDef[] =>
     def.fields.filter((f) => (f.mandatory || extra.includes(f.name)) && !f.readOnly && !value(f.name))
 
@@ -177,7 +263,8 @@ export function FormPage() {
         if (!opts.stay) navigate(-1)
         return rec
       }
-      result = await api.update(table, id, body)
+      result = await api.update(table, id, body, { baseModCount: Number(rec?.sys_mod_count ?? 0) })
+      setConflicts(null)
       setRec(result)
       setDraft({})
       setDv(result._dv ?? {})
@@ -191,6 +278,13 @@ export function FormPage() {
       return result
     } catch (e) {
       const err = e as ApiError
+      if (err.status === 409) {
+        const { latest, items } = await mergeLatest().catch(() => ({ latest: null, items: [] as Conflict[] }))
+        const by = String(latest?.sys_updated_by ?? 'another user')
+        setConflicts({ by, items })
+        setMsgs([{ type: 'error', text: `Not saved: ${by} changed this record while you were editing. ${items.length ? 'Review the conflicting fields below, then save again.' : 'Their changes have been loaded; save again to apply yours.'}` }])
+        return null
+      }
       setMsgs([{ type: 'error', text: `${err.message}${err.detail ? `: ${err.detail}` : ''}` }])
       return null
     } finally {
@@ -284,14 +378,32 @@ export function FormPage() {
       input = <input id={fid} className="sn-input" value={v} onChange={(e) => setField(name, e.target.value)} />
     }
     const mandatory = f.mandatory || (state === '6' && table === 'incident' && (name === 'close_code' || name === 'close_notes'))
+    const editors = remoteEditors[name]
     return (
-      <div className={`sn-field ${full ? 'full' : ''} ${invalid.has(name) ? 'invalid' : ''}`} key={name}>
+      <div
+        className={`sn-field ${full ? 'full' : ''} ${invalid.has(name) ? 'invalid' : ''} ${editors ? 'remote-editing' : ''} ${flash.has(name) ? 'flash' : ''}`}
+        key={name}
+        style={editors ? ({ '--pc': editors[0].color } as React.CSSProperties) : undefined}
+        data-testid={`field-${name}`}
+        onFocus={() => setFocused(name)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((cur) => (cur === name ? null : cur))
+        }}
+      >
         <label htmlFor={fid}>
           {mandatory && <span className={`sn-mand ${v ? 'filled' : ''}`}>*</span>}
           {f.label}
         </label>
-        <div className="sn-field-input">{input}</div>
+        <div className="sn-field-input">
+          {input}
+          {editors && (
+            <span className="sn-remote-tag" data-testid={`remote-editing-${name}`}>
+              {editors.map((e) => e.name).join(', ')} {editors.length > 1 ? 'are' : 'is'} editing
+            </span>
+          )}
+        </div>
       </div>
+
     )
   }
 
@@ -420,6 +532,7 @@ export function FormPage() {
           <b>{isNew ? 'New record' : displayValue(table, rec as Rec, def.displayField)}</b>
           {changed.length > 0 && !isNew && <span className="sn-dirty">● unsaved changes</span>}
         </div>
+        {!isNew && <PresenceBar table={table} viewers={presence.viewers} connected={presence.connected} selfId={user?.sys_id} />}
         <div className="sn-titlebar-right">{buttons}</div>
       </div>
 
@@ -432,8 +545,58 @@ export function FormPage() {
         </div>
       ))}
 
+      {conflicts && conflicts.items.length > 0 && (
+        <div className="sn-conflict" role="alert" data-testid="conflict-banner">
+          <div className="sn-conflict-head">
+            <b>
+              {conflicts.by} changed {conflicts.items.length === 1 ? 'a field' : `${conflicts.items.length} fields`} you are editing
+            </b>
+            <span className="muted">Their other changes were merged into the form automatically.</span>
+          </div>
+          <table className="sn-conflict-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Theirs (saved)</th>
+                <th>Yours (unsaved)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conflicts.items.map((c) => (
+                <tr key={c.field}>
+                  <td>{c.label}</td>
+                  <td className="theirs">{c.theirs}</td>
+                  <td className="mine">{c.mine}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="sn-conflict-actions">
+            <button className="sn-btn" onClick={takeTheirs} data-testid="conflict-take-theirs">
+              Use theirs
+            </button>
+            <button className="sn-btn primary" onClick={() => setConflicts(null)} data-testid="conflict-keep-mine">
+              Keep mine
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="sn-live-toast" role="status" data-testid="live-toast">
+          <span className="sn-live on">
+            <i />
+          </span>
+          {toast}
+          <button onClick={() => setToast(null)} aria-label="Dismiss">
+            <Icon name="close" size={12} />
+          </button>
+        </div>
+      )}
+
       <div className="sn-form">
         {table === 'incident' && rec && <SlaBar rec={rec} />}
+
         {table === 'change_request' && rec && (
           <div className="sn-stepper">
             {['-5', '-4', '-3', '-2', '-1', '0', '3'].map((s) => {
